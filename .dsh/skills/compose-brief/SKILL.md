@@ -123,5 +123,6 @@ Hard rules (the model was trained on exactly this shape):
 ## Handoff
 
 On confirmation, tell the user you are invoking `generate-image` with this
-session folder. Mention the sampler default (V4_QUALITY_48, ~48 steps) and
+session folder. Mention the sampler default (V4_TURBO_12, fast ~12-step drafts;
+request V4_QUALITY_48 explicitly for finals) and
 that the first take is 1 image unless they asked for more.

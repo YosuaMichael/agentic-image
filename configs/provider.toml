@@ -45,8 +45,9 @@ quantization_nf4_repo = "ideogram-ai/ideogram-4-nf4"
 quantization_fp8_repo = "ideogram-ai/ideogram-4-fp8"
 
 # Sampler preset: bundles step count + CFG schedule + mu/std.
-# V4_QUALITY_48 (48 steps, default) | V4_DEFAULT_20 (20) | V4_TURBO_12 (12).
-sampler_preset = "V4_QUALITY_48"
+# V4_TURBO_12 (12 steps, DEFAULT — fast drafts, ~19 s @1MP) |
+# V4_DEFAULT_20 (20, middle) | V4_QUALITY_48 (48, finals on request, ~72 s @1MP).
+sampler_preset = "V4_TURBO_12"
 
 # Canvas defaults. Both sides must be multiples of 16, range 256-2048,
 # aspect ratio up to 6:1. Per-image overrides via --width/--height.

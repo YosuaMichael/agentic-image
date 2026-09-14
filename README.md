@@ -95,7 +95,7 @@ artifact flags, ranked verdict).
 
 [`configs/provider.toml`](configs/provider.toml) holds the single-model
 registry plus Ideogram 4 defaults: quantization (`nf4` on CUDA, else `fp8`),
-sampler preset (`V4_QUALITY_48` for finals, `V4_TURBO_12` for drafts), and
+sampler preset (`V4_TURBO_12` drafts by default, `V4_QUALITY_48` for finals on request), and
 canvas size (default 1024×1024).
 
 ## Project Status

@@ -33,9 +33,9 @@ Default stays `nf4` (see `plans/2026-09-14-perf-tuning.md` for the full table).
 
 | Preset | Steps | Character |
 |---|---|---|
-| `V4_QUALITY_48` (default) | 48 (45 @ gw=7 + 3 polish @ gw=3) | Finals; best quality |
+| `V4_TURBO_12` (default) | 12 (11 @ gw=7 + 1 polish @ gw=3) | Fast drafts (~19 s diffusion @1MP) |
 | `V4_DEFAULT_20` | 20 (18 @ gw=7 + 2 polish @ gw=3) | Middle ground |
-| `V4_TURBO_12` | 12 (11 @ gw=7 + 1 polish @ gw=3) | Fast drafts while iterating captions (~19 s diffusion @1MP) |
+| `V4_QUALITY_48` (finals on request) | 48 (45 @ gw=7 + 3 polish @ gw=3) | Best quality (~72 s @1MP) |
 
 Custom schedules: add an entry to `ideogram4.sampler_configs.PRESETS`
 upstream — then wire it here via a dated plan change (never hand-patch

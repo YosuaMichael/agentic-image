@@ -248,7 +248,7 @@ def main() -> int:
         return fail(f"aspect ratio {width}:{height} exceeds the 6:1 limit")
 
     sampler_preset = args.sampler_preset or str(
-        ide_cfg.get("sampler_preset", "V4_QUALITY_48"))
+        ide_cfg.get("sampler_preset", "V4_TURBO_12"))
     if sampler_preset not in SAMPLER_PRESETS:
         return fail(f"unknown sampler preset {sampler_preset!r}")
     quantization = args.quantization or str(

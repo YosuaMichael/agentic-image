@@ -59,4 +59,5 @@ Rule) in the same turn. Rules in that file override habit.
 - Ideogram 4 needs a one-time machine setup (`python scripts/setup_ideogram.py`,
   gated HF weights ~multi-GB + torch); if a take reports the runtime is not
   installed, tell the user that rather than installing anything yourself.
-  The weights gate (accept on HF + `HF_TOKEN`) is a human browser step.
+  The weights gate (accept on HF + `HF_TOKEN`) is a human browser step, done
+  once — setup persists the login, so later sessions need no token at all.

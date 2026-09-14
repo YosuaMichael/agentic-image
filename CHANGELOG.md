@@ -5,6 +5,9 @@ JSON-contract changes (`<name>/vN` bumps) must be noted.
 
 ## [Unreleased]
 
+- `setup_ideogram.py` persists HF login (`login_persisted` in
+  `setup_ideogram/v1`): after one setup with `HF_TOKEN`, later sessions reuse
+  the cached weights with no token in their environment.
 - New: `scripts/render_batch.py` (`render_batch_inner/v1`, venv-resident) and
   `generate_take.py --takes N` (`generate_batch/v1`) — one pipeline load for
   N takes. Seeds cycle by take number; `--seed`/`--use-magic-prompt`/

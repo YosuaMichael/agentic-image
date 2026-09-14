@@ -45,7 +45,10 @@ license. The USER must, once, in a browser:
    `HF_TOKEN="hf_..."` (or `hf auth login`).
 
 The agent cannot click through gates — ask the user to confirm this is done
-before Step 4. No token, no weights (`404` / `GatedRepoError`).
+before Step 4. No token, no weights (`404` / `GatedRepoError`). Once: after
+Step 4 runs with `HF_TOKEN` present, `setup_ideogram.py` persists the login
+to `~/.cache/huggingface/token` — later sessions reuse the disk cache with
+**no token in their environment** (download once, reuse every time).
 
 ## Step 4 — Runtime + weights setup
 

@@ -13,14 +13,17 @@ Idempotent steps, in order:
   3. unless --skip-weights: pre-download the gated weight repos into the HF
      cache via the huggingface_hub API (needs HF_TOKEN + accepted gates;
      downloads are resumable)
-  4. gate: `yue2`-style readiness probe — here: `python -c "import ideogram4"`
-     plus weights-present check, reported as ready_for_generation
+  4. persist HF login (when HF_TOKEN is present) so later sessions reuse the
+     disk cache with no token in their environment
+  5. gate: import probe + weights-present check, reported as
+     ready_for_generation
 
 JSON contract (stdout) — setup_ideogram/v1:
     {"schema": "setup_ideogram/v1", "ok": true,
      "actions": [...], "skipped": [...],
      "venv_dir": "...", "installed_version": "0.1.0"|null,
      "weights_present": {"ideogram-ai/ideogram-4-nf4": true|false, ...},
+     "login_persisted": true|false,
      "ready_for_generation": true|false,
      "warnings": [...], "error": null}
 
@@ -179,6 +182,25 @@ def main() -> int:
                 "fp8": "ideogram-ai/ideogram-4-fp8"}[args.quantization]
         hf_repos = [r for r in hf_repos if r == only]
     weights_present: dict[str, bool] = {}
+    login_persisted = False
+    # One-time persistent auth: `huggingface_hub.login()` stores the token in
+    # ~/.cache/huggingface/token, so LATER sessions generate with no HF_TOKEN
+    # in their environment (weights are reused from the shared disk cache;
+    # only fast metadata revalidation touches the network). Download-once,
+    # reuse-everytime starts here.
+    if os.environ.get("HF_TOKEN"):
+        persist = ("import os;"
+                   "from huggingface_hub import login;"
+                   "login(token=os.environ['HF_TOKEN']);"
+                   "print('login persisted')")
+        rc_login, _, err_login = venv_run(["-c", persist], timeout=120)
+        login_persisted = rc_login == 0
+        if login_persisted:
+            actions.append("persisted HF login (~/.cache/huggingface/token)")
+        else:
+            warnings.append("HF login persistence FAILED: "
+                            f"{err_login[-500:]} (sessions will keep "
+                            f"needing HF_TOKEN)")
     if args.skip_weights:
         skipped.append("weight pre-fetch (--skip-weights)")
         for repo in hf_repos:
@@ -222,6 +244,7 @@ def main() -> int:
           "python": " ".join(python_cmd),
           "installed_version": installed_version,
           "weights_present": weights_present,
+          "login_persisted": login_persisted,
           "ready_for_generation": ready,
           "warnings": warnings, "error": None})
     return 0

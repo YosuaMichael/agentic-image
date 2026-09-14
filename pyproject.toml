@@ -1,0 +1,34 @@
+[project]
+name = "agentic-image"
+version = "0.0.1"
+description = "Agent-executable local image generation studio: Ideogram 4 on your own GPU, orchestrated by coding agents."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "agentic-image contributors" }]
+dependencies = []
+
+[project.urls]
+Upstream-model = "https://huggingface.co/collections/ideogram-ai/ideogram-4"
+Upstream-code = "https://github.com/ideogram-oss/ideogram4"
+
+[dependency-groups]
+dev = ["ruff>=0.8", "pytest>=8"]
+
+# Pipeline scripts are stdlib-only by design so they can run anywhere without
+# an environment. The Ideogram 4 runtime itself (torch + ideogram4 package) is
+# provisioned separately by scripts/setup_ideogram.py.
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501", # long lines allowed in docstrings carrying JSON contracts
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

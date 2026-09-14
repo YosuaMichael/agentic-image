@@ -1,0 +1,4 @@
+interface:
+  display_name: "agentic-image Compose Brief"
+  short_description: "Interview the user and build an Ideogram 4 structured caption"
+  default_prompt: "Use compose-brief to help me design an image, then prepare its caption for local generation."

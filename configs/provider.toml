@@ -1,0 +1,93 @@
+# Provider configuration — which image model to use and its defaults.
+# Parsed by the scripts/ CLIs. Keep TOML simple.
+#
+# Unlike agentic-music (two music models, one asked-once choice per session),
+# this studio drives a SINGLE image model — Ideogram 4 — so there is no
+# per-session model question. The axes an agent varies per image are the
+# QUANTIZATION (VRAM/quality tradeoff) and the SAMPLER PRESET (speed/quality
+# tradeoff), both recorded per take in its metadata.json.
+
+# ---------------------------------------------------------------------------
+# Image-model registry. Single entry today; kept as a table so a second model
+# is an additive change (mirrors agentic-music's [models] shape).
+
+[models]
+# The model every session uses. There is no model.json and no ask-once gate:
+# compose-brief goes straight to the interview.
+default = "ideogram4"
+available = ["ideogram4"]
+
+[models.ideogram4]
+label = "Ideogram 4 (9.3B flow-matching DiT, structured JSON captions)"
+engine = "ideogram4"
+# Weights are gated on Hugging Face under the Ideogram 4 Non-Commercial
+# license. Surfaced in README/NOTICE — never claim commercial rights over
+# Ideogram 4 output without separate terms.
+weights_license = "Ideogram 4 Non-Commercial (non-commercial)"
+commercial_use = false
+# The prompt artifact this model consumes (see docs; prompting guide in
+# oss/ideogram4/docs/prompting.md after fetch_upstream.sh).
+prompt_artifact = "caption.json"
+
+# ---------------------------------------------------------------------------
+# Ideogram 4 runtime + generation defaults.
+# See https://github.com/ideogram-oss/ideogram4 (docs/inference.md,
+# docs/prompting.md) — fetched locally into oss/ideogram4 by
+# scripts/fetch_upstream.sh.
+
+[ideogram4]
+# Weight precision. "nf4" = bitsandbytes 4-bit pre-quantized weights
+# (CUDA only). "fp8" = weight-only e4m3 float8 transformer, activations bf16 —
+# runs on any device, no FP8 hardware needed. Default follows upstream
+# run_inference.py: nf4 when CUDA is present, else fp8.
+quantization = "nf4"
+quantization_nf4_repo = "ideogram-ai/ideogram-4-nf4"
+quantization_fp8_repo = "ideogram-ai/ideogram-4-fp8"
+
+# Sampler preset: bundles step count + CFG schedule + mu/std.
+# V4_QUALITY_48 (48 steps, default) | V4_DEFAULT_20 (20) | V4_TURBO_12 (12).
+sampler_preset = "V4_QUALITY_48"
+
+# Canvas defaults. Both sides must be multiples of 16, range 256-2048,
+# aspect ratio up to 6:1. Per-image overrides via --width/--height.
+width = 1024
+height = 1024
+
+# Magic prompt: expand a plain-text brief into the structured JSON caption
+# the model was trained on. "ideogram-4-v1" = Ideogram's free hosted API
+# (needs IDEOGRAM_API_KEY); "claude-opus-v1"/"claude-sonnet-v1" = OpenRouter
+# (needs MAGIC_PROMPT_API_KEY). Agents should PREFER writing caption.json
+# directly (compose-brief) and pass --no-magic-prompt; magic prompt is the
+# fallback for casual one-liners, not the default path.
+magic_prompt = true
+magic_prompt_model = "ideogram-4-v1"
+
+# Safety screening via Hive (upstream strongly recommends; without keys
+# screening is DISABLED and runs print a warning). Keys come from the
+# environment (HIVE_TEXT_MODERATION_KEY / HIVE_VISUAL_MODERATION_KEY),
+# never from this file.
+hive_text = false
+hive_visual = false
+
+# --- Pinned upstream source (scripts/fetch_upstream.sh, docs/upstream.md) ---
+src_dir = "oss/ideogram4"
+upstream_git = "https://github.com/ideogram-oss/ideogram4.git"
+upstream_ref = "main"
+# Hugging Face weight repos pre-fetched by scripts/setup_ideogram.py.
+hf_repos = ["ideogram-ai/ideogram-4-nf4", "ideogram-ai/ideogram-4-fp8"]
+
+# --- Runtime placement -----------------------------------------------------
+# Upstream is torch-based and Windows-capable (CUDA/MPS/CPU device pick).
+# Default venv lives OUTSIDE the repo (weights + torch are multi-GB).
+venv_dir = "~/.venvs/agentic-image-ideogram4"
+python = "python3.12"
+
+[generation]
+# Number of seeded takes per generation round (default 1: images are cheap to
+# preview one at a time; batch more only on request).
+num_takes = 1
+# Seeds cycled if more takes than seeds are requested.
+seeds = [7, 42, 1234]
+# Master artifact format. PNG is lossless and the pipeline default; upstream
+# writes PNG. No MP3-style companion exists for images.
+response_format = "png"

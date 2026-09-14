@@ -1,0 +1,4 @@
+interface:
+  display_name: "agentic-image Model Guide"
+  short_description: "Ideogram 4 parameters, presets, resolutions, caption schema"
+  default_prompt: "Use model-guide to pick the right size, preset, and quantization for this render."

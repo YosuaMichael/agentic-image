@@ -1,0 +1,41 @@
+agentic-image
+Copyright (c) 2026 agentic-image contributors
+
+This product includes original code licensed under the MIT License (see LICENSE)
+and references third-party material as described below.
+
+1. Ideogram 4 inference code
+   https://github.com/ideogram-oss/ideogram4
+
+   The upstream repository is cloned into a git-excluded local directory
+   (oss/ideogram4) by scripts/fetch_upstream.sh and invoked at generation time
+   via its run_inference.py interface. It is NOT redistributed with this
+   product. Only short attributed excerpts (parameter names, schema shapes)
+   appear in this repository's own skill and script documentation.
+
+2. Ideogram 4 model weights — NON-COMMERCIAL ONLY
+   https://huggingface.co/ideogram-ai/ideogram-4-nf4
+   https://huggingface.co/ideogram-ai/ideogram-4-fp8
+
+   Licensed under the Ideogram 4 Non-Commercial license (see
+   model_licenses/LICENSE-IDEOGRAM-4-NON-COMMERCIAL in the upstream
+   repository). Downloaded by end users directly from Hugging Face after
+   accepting the license gate. Weights are not included with, or
+   redistributed by, this product.
+
+   IMPORTANT: this is a non-commercial license. Ideogram 4 weights — and
+   therefore images generated with them through this product — may only be
+   used for NonCommercial purposes. Commercial use requires separate terms
+   from Ideogram.
+
+3. Qwen3-VL-8B (Ideogram 4 text encoder)
+   https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct
+
+   Loaded by the upstream pipeline at runtime under its own license terms.
+   Not included with, or redistributed by, this product.
+
+4. Hive safety screening (optional integration)
+   https://thehive.ai
+
+   Third-party moderation APIs invoked only when the user configures keys.
+   Subject to Hive's terms.

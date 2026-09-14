@@ -1,0 +1,4 @@
+interface:
+  display_name: "agentic-image Generate Image"
+  short_description: "Render seeded Ideogram 4 takes for a prepared session"
+  default_prompt: "Use generate-image to render takes for this session, then show me result links."

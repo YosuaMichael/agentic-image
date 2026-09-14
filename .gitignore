@@ -1,0 +1,47 @@
+# Upstream checkout: fetched locally by scripts/fetch_upstream.sh, never committed
+oss/
+
+# Per-image session state and generated images
+sessions/
+studio/sessions/
+
+# Studio learnings: personal runtime memory, kept out of the public repo
+studio/learnings/
+
+# Model weights and local caches
+models/
+
+# Local native tooling (venv etc.)
+.tools/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.ruff_cache/
+.pytest_cache/
+
+# Environment files (keep the example)
+.env
+.env.*
+!.env.example
+
+# Node tooling
+node_modules/
+
+# Generated media; sanitized samples under assets/ are allowed
+*.png
+*.jpg
+*.jpeg
+*.webp
+!assets/**/*.png
+!assets/**/*.jpg
+!assets/**/*.jpeg
+!assets/**/*.webp
+
+# OS cruft
+.DS_Store
+Thumbs.db

@@ -1,0 +1,4 @@
+interface:
+  display_name: "agentic-image Judge Quality"
+  short_description: "Review rendered takes and record a ranked verdict"
+  default_prompt: "Use judge-quality to review this session's takes and recommend one."

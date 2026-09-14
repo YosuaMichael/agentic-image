@@ -1,0 +1,4 @@
+interface:
+  display_name: "agentic-image Env Setup"
+  short_description: "Bring a machine from zero to generating images"
+  default_prompt: "Use env-setup to audit this machine and install the Ideogram 4 runtime."

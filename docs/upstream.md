@@ -2,7 +2,7 @@
 
 | Checkout | URL | Ref | Commit |
 |---|---|---|---|
-| oss/ideogram4 | https://github.com/ideogram-oss/ideogram4.git | main | not fetched |
+| oss/ideogram4 | https://github.com/ideogram-oss/ideogram4.git | main | 990fe1c4e950bb9e9dc90e01c0ad98ba434f83c2 |
 
-Required files digested this run: 0 checked, 0 missing.
+Required files digested this run: 7 checked, 0 missing.
 Re-run `bash scripts/fetch_upstream.sh` after pulling to refresh this file.

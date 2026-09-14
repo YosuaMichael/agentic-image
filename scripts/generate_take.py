@@ -52,6 +52,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shlex
 import struct
 import subprocess
@@ -263,6 +264,17 @@ def main() -> int:
     started = datetime.now(UTC).isoformat(timespec="seconds")
     t0 = time.monotonic()
 
+    # The model runtime lives in its own venv (torch + ideogram4 are NOT
+    # installed in the driving interpreter). Prefer it; fall back to
+    # sys.executable only when setup has never run.
+    venv_dir = Path(os.path.expanduser(
+        str(ide_cfg.get("venv_dir",
+                        "~/.venvs/agentic-image-ideogram4"))))
+    venv_python = venv_dir / ("Scripts/python.exe"
+                              if os.name == "nt" else "bin/python")
+    backend_python = (str(venv_python) if venv_python.is_file()
+                      else sys.executable)
+
     magic_used = bool(args.use_magic_prompt)
     if args.dry_run:
         if out_png.exists():
@@ -275,7 +287,8 @@ def main() -> int:
             return fail(
                 f"{runner} missing: run scripts/fetch_upstream.sh first, then "
                 f"scripts/setup_ideogram.py", model="ideogram4")
-        cmd = [sys.executable, str(runner),
+        # Backend interpreter resolved above (venv preferred).
+        cmd = [backend_python, str(runner),
                "--output", str(out_png),
                "--width", str(width), "--height", str(height),
                "--seed", str(seed),
@@ -330,11 +343,11 @@ def main() -> int:
         "take": take,
         "seed": seed,
         "width": width,
-        "height": height,
-        "actual_width": dims[0] if dims else None,
+        "height": height,        "actual_width": dims[0] if dims else None,
         "actual_height": dims[1] if dims else None,
         "sampler_preset": sampler_preset,
         "quantization": quantization,
+        "python": backend_python,
         "magic_prompt": {"used": magic_used,
                          "model": magic_model if magic_used else None},
         "caption_sha256": caption_sha or None,

@@ -14,15 +14,17 @@
 - [x] `AGENTS.md` + `studio/AGENTS.md`, README, NOTICE, plans, tests, `.env.example`
 - [x] No-GPU tests green (`pytest tests/`)
 
-## Acceptance tests (outstanding)
+## Acceptance tests
 
-1. **First real GPU render** on a target machine (env-setup Step 5):
-   `generate/v1 ok:true`, non-empty PNG at requested dims. Record peak VRAM +
-   wall time + preset/size/quantization in a new dated plan doc.
-2. **Gallery link check**: `/view/<session>/takes/take-01.png` loads from a
-   second device (tailscale serve) with preview + download working.
-3. **Push to origin**: https://github.com/YosuaMichael/agentic-image is the
-   remote; `main` contains exactly the scaffold (no sessions/weights/keys).
+1. **First real GPU render** — DONE 2026-09-14 (see
+   [2026-09-14-first-gpu-render](2026-09-14-first-gpu-render.md)): take-02,
+   1024×1536, QUALITY_48/nf4, 456.2 s end to end on RTX 4090. Peak VRAM still
+   open (poll during diffusion next time).
+2. **Gallery link check** — DONE 2026-09-14: `/view/<session>/takes/take-02.png`
+   and gallery `/` both 200 with the take listed. Tailscale second-device
+   check still open.
+3. **Push to origin** — DONE (v0.0.1 + acceptance fixes to follow in §Roadmap
+   commit).
 
 ## Roadmap
 

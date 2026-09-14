@@ -11,7 +11,8 @@ Idempotent steps, in order:
   2. ensure a venv at [ideogram4].venv_dir with the upstream package installed
      (pip install <src_dir>, or -e with --force semantics for reinstall)
   3. unless --skip-weights: pre-download the gated weight repos into the HF
-     cache (needs HF_TOKEN + accepted gates; `hf download` resumable)
+     cache via the huggingface_hub API (needs HF_TOKEN + accepted gates;
+     downloads are resumable)
   4. gate: `yue2`-style readiness probe — here: `python -c "import ideogram4"`
      plus weights-present check, reported as ready_for_generation
 
@@ -35,6 +36,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tomllib
@@ -67,6 +69,10 @@ def main() -> int:
     parser.add_argument("--skip-weights", action="store_true")
     parser.add_argument("--force", action="store_true",
                         help="Reinstall the package even if importable")
+    parser.add_argument("--python", default=None,
+                        help="Interpreter for the venv (shell-split, e.g. "
+                             '"py -3.13"). Default: [ideogram4].python with '
+                             "Windows fallbacks (py -3.12, py -3.13, python).")
     args = parser.parse_args()
 
     actions: list[str] = []
@@ -96,17 +102,47 @@ def main() -> int:
         str(ide.get("venv_dir", "~/.venvs/agentic-image-ideogram4"))))
     venv_python = (venv_dir / ("Scripts/python.exe"
                                if os.name == "nt" else "bin/python"))
-    python_bin = str(ide.get("python", "python3.12"))
+
+    # Resolve the venv interpreter: explicit --python wins, else the config
+    # value, else Windows fallbacks (the Unix name python3.12 rarely exists
+    # there; the py launcher does). First candidate that runs --version wins.
+    candidates: list[list[str]] = []
+    if args.python:
+        try:
+            candidates.append(shlex.split(args.python, posix=os.name != "nt"))
+        except ValueError as exc:
+            emit({"schema": "setup_ideogram/v1", "ok": False,
+                  "error": f"--python is not shell-parseable: {exc}"})
+            return 2
+    candidates.append(shlex.split(str(ide.get("python", "python3.12"))))
+    if os.name == "nt":
+        candidates += [["py", "-3.12"], ["py", "-3.13"], ["python"]]
+    python_cmd: list[str] | None = None
+    probed: list[str] = []
+    for cand in candidates:
+        if cand in probed:
+            continue
+        probed.append(" ".join(cand))
+        rc, _, _ = _run([*cand, "--version"], timeout=60)
+        if rc == 0:
+            python_cmd = cand
+            break
+    if python_cmd is None:
+        emit({"schema": "setup_ideogram/v1", "ok": False,
+              "error": f"no usable python found (tried: {', '.join(probed)}); "
+                       f"install Python >=3.10 or pass --python"})
+        return 8
 
     venv_created = venv_dir.is_dir()
     if not venv_created:
-        rc, _, err = _run([python_bin, "-m", "venv", str(venv_dir)])
+        rc, _, err = _run([*python_cmd, "-m", "venv", str(venv_dir)])
         if rc != 0:
             emit({"schema": "setup_ideogram/v1", "ok": False,
-                  "error": f"venv creation failed ({python_bin}): "
+                  "error": f"venv creation failed ({' '.join(python_cmd)}): "
                            f"{err[-2000:]}"})
             return 8
-        actions.append(f"created venv at {venv_dir}")
+        actions.append(f"created venv at {venv_dir} "
+                       f"({' '.join(python_cmd)})")
     else:
         skipped.append(f"venv exists at {venv_dir}")
 
@@ -115,9 +151,10 @@ def main() -> int:
         return _run([str(venv_python), *mod_args], timeout=timeout)
 
     installed_version: str | None = None
-    rc, out, _ = venv_run(["-c", "import ideogram4;"
-                                 "print(getattr(ideogram4, '__version__',"
-                                 " 'unknown'))"], timeout=120)
+    rc, out, _ = venv_run(["-c",
+                           "import importlib.metadata;"
+                           "print(importlib.metadata.version('ideogram-4'))"],
+                          timeout=120)
     needs_install = args.force or rc != 0
     if needs_install:
         rc, _, err = venv_run(["-m", "pip", "install", str(src_dir)])
@@ -127,9 +164,10 @@ def main() -> int:
                   "error": f"pip install {src_dir} failed: {err[-2000:]}"})
             return 8
         actions.append(f"pip installed {src_dir}")
-        rc, out, _ = venv_run(["-c", "import ideogram4;"
-                                     "print(getattr(ideogram4, '__version__',"
-                                     " 'unknown'))"], timeout=120)
+        rc, out, _ = venv_run(["-c",
+                               "import importlib.metadata;"
+                               "print(importlib.metadata.version"
+                               "('ideogram-4'))"], timeout=120)
     else:
         skipped.append("ideogram4 package already importable in venv")
     if rc == 0:
@@ -153,12 +191,17 @@ def main() -> int:
             warnings.append("HF_TOKEN not set: gated weight downloads will "
                             "fail with 404/GatedRepoError. Accept the gates "
                             "and export HF_TOKEN, then re-run.")
+        # Pre-fetch via the huggingface_hub Python API (no CLI entry-point
+        # needed). snapshot_download warms the shared HF cache that
+        # run_inference.py reads at generation time; HF_TOKEN is inherited
+        # from this process' environment.
         for repo in hf_repos:
-            rc, _, err = venv_run(["-m", "huggingface_hub.commands.hf",
-                                   "download", repo], timeout=7200)
-            # Fallback to the `hf` entry point when the module path moves.
-            if rc != 0:
-                rc, _, err = _run(["hf", "download", repo], timeout=7200)
+            prefetch = (
+                "from huggingface_hub import snapshot_download;"
+                f"snapshot_download(repo_id={repo!r});"
+                f"print('prefetched {repo}')"
+            )
+            rc, _, err = venv_run(["-c", prefetch], timeout=7200)
             weights_present[repo] = rc == 0
             (actions if rc == 0 else warnings).append(
                 f"pre-fetched {repo}" if rc == 0
@@ -176,6 +219,7 @@ def main() -> int:
     emit({"schema": "setup_ideogram/v1", "ok": True,
           "actions": actions, "skipped": skipped,
           "venv_dir": str(venv_dir),
+          "python": " ".join(python_cmd),
           "installed_version": installed_version,
           "weights_present": weights_present,
           "ready_for_generation": ready,

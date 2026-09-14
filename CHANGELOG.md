@@ -5,6 +5,11 @@ JSON-contract changes (`<name>/vN` bumps) must be noted.
 
 ## [Unreleased]
 
+- Hermetic weights: `[ideogram4].hf_cache = "models/hf-hub"` (gitignored);
+  generation runs with `HF_HUB_OFFLINE=1` — no token, no network, no
+  re-download in any session. Setup writes an offline shim
+  (`tokenizer/config.json`, upstream ships none) on every prefetch; cold
+  cache fails fast pointing at setup.
 - `setup_ideogram.py` persists HF login (`login_persisted` in
   `setup_ideogram/v1`): after one setup with `HF_TOKEN`, later sessions reuse
   the cached weights with no token in their environment.

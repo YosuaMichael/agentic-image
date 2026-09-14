@@ -77,6 +77,13 @@ upstream_ref = "main"
 # Hugging Face weight repos pre-fetched by scripts/setup_ideogram.py.
 hf_repos = ["ideogram-ai/ideogram-4-nf4", "ideogram-ai/ideogram-4-fp8"]
 
+# --- Weight cache (download once, reuse every time) --------------------------
+# Agreed on-disk home for the gated weights, resolved repo-relative.
+# Gitignored (models/), shared by every session on this machine. Setup writes
+# here (needs HF_TOKEN + accepted gates, once); generation reads here with
+# HF_HUB_OFFLINE=1 (no token, no network, no re-download, ever).
+hf_cache = "models/hf-hub"
+
 # --- Runtime placement -----------------------------------------------------
 # Upstream is torch-based and Windows-capable (CUDA/MPS/CPU device pick).
 # Default venv lives OUTSIDE the repo (weights + torch are multi-GB).

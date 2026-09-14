@@ -21,6 +21,11 @@ wrote), pre-flights it with scripts/verify_caption.py, then drives upstream's
 oss/ideogram4/run_inference.py as a subprocess. With --dry-run it writes a
 small stdlib-generated placeholder PNG instead — the no-GPU smoke-test path.
 
+Hermetic backend: generation reads weights from the agreed repo-local cache
+([ideogram4].hf_cache) with HF_HUB_OFFLINE=1 — no HF token, no network, no
+re-download, in ANY session. If the cache is cold the script fails fast
+(exit 2) telling the user to run scripts/setup_ideogram.py once.
+
 Session inputs (compose-brief writes them):
     caption.json   REQUIRED — structured Ideogram 4 caption (verified first)
     brief.md       advisory — human-readable interview result (snapshotted)
@@ -307,6 +312,29 @@ def main() -> int:
     backend_python = (str(venv_python) if venv_python.is_file()
                       else sys.executable)
 
+    # Hermetic backend: weights come from the agreed repo-local cache, offline.
+    # No HF token, no network, no re-download — ever. If the cache is cold,
+    # say exactly how to warm it (setup) instead of failing cryptically
+    # inside the backend.
+    hf_raw = str(ide_cfg.get("hf_cache", "models/hf-hub"))
+    hf_cache = Path(os.path.expanduser(hf_raw))
+    if not hf_cache.is_absolute():
+        hf_cache = REPO_ROOT / hf_cache
+    repos = {"nf4": "ideogram-ai/ideogram-4-nf4",
+             "fp8": "ideogram-ai/ideogram-4-fp8"}
+    repo_dir = (hf_cache /
+                ("models--" + repos[quantization].replace("/", "--")))
+    backend_env: dict[str, str] | None = None
+    if not args.dry_run:
+        if not (repo_dir / "refs" / "main").is_file():
+            return fail(f"weights for {quantization} are not in the agreed "
+                        f"cache ({hf_cache}): run "
+                        f"scripts/setup_ideogram.py first (one-time download)",
+                        model="ideogram4")
+        backend_env = dict(os.environ)
+        backend_env["HF_HUB_CACHE"] = str(hf_cache)
+        backend_env["HF_HUB_OFFLINE"] = "1"
+
     def _finalize(take: str, seed: int, out_png: Path,
                   dims: tuple[int, int] | None, nbytes: int,
                   elapsed: float, started: str) -> dict:
@@ -388,7 +416,7 @@ def main() -> int:
                "--quantization", quantization]
         proc = subprocess.run(
             cmd, capture_output=True, text=True, encoding="utf-8",
-            errors="replace", check=False)
+            errors="replace", check=False, env=backend_env)
         try:
             inner = json.loads(proc.stdout)
         except json.JSONDecodeError:
@@ -471,7 +499,7 @@ def main() -> int:
         cmd += extra_tokens
         proc = subprocess.run(
             cmd, capture_output=True, text=True, encoding="utf-8",
-            errors="replace", check=False)
+            errors="replace", check=False, env=backend_env)
         if proc.returncode != 0:
             sys.stderr.write(
                 f"[generate_take] run_inference.py rc={proc.returncode}\n"

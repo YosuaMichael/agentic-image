@@ -9,4 +9,5 @@ to change one, write a new dated plan and register it here.
 | 2026-09-14 | [open-source-standards](2026-08-23-open-source-standards.md) | active | Licensing policy, publication rules, engineering standards |
 | 2026-09-14 | [first-gpu-render](2026-09-14-first-gpu-render.md) | active | Acceptance test: first real render, measurements, setup pitfalls fixed |
 | 2026-09-14 | [perf-tuning](2026-09-14-perf-tuning.md) | active | Diagnosis of 456 s render; batch mode; nf4-only verdict with numbers |
+| 2026-09-14 | [hermetic-weights](2026-09-14-hermetic-weights.md) | active | Repo-local weight cache; offline generation with no login/network |
 | 2026-09-14 | [IMPLEMENTATION-STATUS](IMPLEMENTATION-STATUS.md) | living | Build progress + acceptance tests |

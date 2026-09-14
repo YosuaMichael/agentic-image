@@ -189,6 +189,31 @@ def test_batch_rejects_explicit_seed(tmp_path: Path) -> None:
     assert doc["ok"] is False
 
 
+def test_cold_cache_fails_fast_with_setup_hint(tmp_path: Path) -> None:
+    session = tmp_path / "20260914-000000-cold-cache"
+    (session / "takes").mkdir(parents=True)
+    (session / "caption.json").write_text(json.dumps({
+        "compositional_deconstruction": {
+            "background": "x.",
+            "elements": [{"type": "obj", "desc": "y."}],
+        }}), encoding="utf-8")
+    config = tmp_path / "provider.toml"
+    config.write_text(
+        "[models]\ndefault = \"ideogram4\"\n"
+        "available = [\"ideogram4\"]\n"
+        "[models.ideogram4]\nengine = \"ideogram4\"\n"
+        "[ideogram4]\nquantization = \"nf4\"\n"
+        "sampler_preset = \"V4_TURBO_12\"\nwidth = 1024\nheight = 1024\n"
+        "hf_cache = \"does-not-exist\"\n"
+        "[generation]\nseeds = [7]\n", encoding="utf-8")
+    proc = run("generate_take.py", "--session", str(session),
+               "--config", str(config))
+    assert proc.returncode == 2
+    doc = json.loads(proc.stdout)
+    assert doc["schema"] == "generate/v1" and doc["ok"] is False
+    assert "setup_ideogram" in doc["error"]
+
+
 def test_serve_builds_index_for_dry_run_session(tmp_path: Path) -> None:
     sys.path.insert(0, str(SCRIPTS))
     import serve_artifacts

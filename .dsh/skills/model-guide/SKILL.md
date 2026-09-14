@@ -20,13 +20,14 @@ Inference code is open; weights are gated on HF (accept gate + `HF_TOKEN`).
 
 ## 1. Quantization (quality/VRAM tradeoff)
 
-| Value | Weights | Device | Notes |
+| Value | Weights | Device | Verdict on RTX 4090 (measured 2026-09-14) |
 |---|---|---|---|
-| `nf4` (default on CUDA) | bitsandbytes 4-bit pre-quantized (`ideogram-ai/ideogram-4-nf4`) | CUDA only | Best quality-per-GB; the default when `torch.cuda` is available |
-| `fp8` | weight-only e4m3 float8 transformer, activations bf16 (`ideogram-ai/ideogram-4-fp8`) | Any (no FP8 HW needed) | Fallback for MPS/CPU or small VRAM |
+| `nf4` (default on CUDA) | bitsandbytes 4-bit pre-quantized (`ideogram-ai/ideogram-4-nf4`) | CUDA only | ✅ load ~95 s, 0.72 s/forward-eval @1MP, 19.5 GB peak. The only viable path here |
+| `fp8` | weight-only e4m3 float8 transformer, activations bf16 (`ideogram-ai/ideogram-4-fp8`) | Any (no FP8 HW needed) | ❌ **Do not use on this machine**: load ~357 s, **28 s/forward-eval (39× slower)**, 30 GB peak. The fp8 kernels have no fast path in this environment. Revisit only with a dated plan change and fresh numbers |
 
 Set per take: `python scripts/generate_take.py --session <dir> --quantization fp8`.
 Switching quantization changes the pixels — takes record theirs in metadata.
+Default stays `nf4` (see `plans/2026-09-14-perf-tuning.md` for the full table).
 
 ## 2. Sampler presets (speed/quality tradeoff)
 
@@ -34,11 +35,31 @@ Switching quantization changes the pixels — takes record theirs in metadata.
 |---|---|---|
 | `V4_QUALITY_48` (default) | 48 (45 @ gw=7 + 3 polish @ gw=3) | Finals; best quality |
 | `V4_DEFAULT_20` | 20 (18 @ gw=7 + 2 polish @ gw=3) | Middle ground |
-| `V4_TURBO_12` | 12 (11 @ gw=7 + 1 polish @ gw=3) | Fast drafts while iterating captions |
+| `V4_TURBO_12` | 12 (11 @ gw=7 + 1 polish @ gw=3) | Fast drafts while iterating captions (~19 s diffusion @1MP) |
 
 Custom schedules: add an entry to `ideogram4.sampler_configs.PRESETS`
 upstream — then wire it here via a dated plan change (never hand-patch
 `oss/`; it is gitignored upstream).
+
+### Measured performance (RTX 4090, nf4, this machine, 2026-09-14)
+
+Per-process pipeline load is ~95–100 s (paid once per OS process — see
+batch mode below). Diffusion proper is 0.72 s per forward-eval at 1MP
+(2 evals per step: conditional + unconditional branch):
+
+| Preset | 1024×1024 diffusion | + load (single take) |
+|---|---|---|
+| `V4_TURBO_12` (drafts) | ~19 s | ~115 s |
+| `V4_DEFAULT_20` | ~29 s | ~130 s |
+| `V4_QUALITY_48` (finals) | ~72 s | ~172 s |
+
+Scale-up is super-linear in pixels: QUALITY_48 at 1024×1536 (1.5MP) cost
+~350 s diffusion (~3.7 s/eval) + load ≈ 456 s end to end. Rule: **iterate at
+1024² TURBO, finish at target size QUALITY**. Batch `--takes N` pays load
+once: 3× TURBO @1MP ≈ 100 + 3×19 ≈ 157 s total. Full table + fp8 numbers:
+[plans/2026-09-14-perf-tuning.md](../../../plans/2026-09-14-perf-tuning.md).
+Peak VRAM measured 19.5 GB (nf4, load+diffusion) — per-diffusion peak still
+open (poll `nvidia-smi` mid-render next time).
 
 ## 3. Resolutions
 

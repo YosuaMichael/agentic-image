@@ -28,13 +28,20 @@ description: >
    its rules override habit.
 2. **Dispatch 1 take by default** (next seed from `[generation].seeds`).
    One image keeps iteration fast — batch more only after seeing the first
-   result. When the user explicitly requested N, honor it.
+   result. When the user explicitly requested N, honor it **with one batch
+   call** (`--takes N`), not N separate calls: the ~100 s pipeline load is
+   paid once per process, so 3× TURBO @1MP costs ~157 s batched vs ~345 s
+   as separate calls. (`--takes N>1` cycles seeds and rejects `--seed`,
+   `--use-magic-prompt`, and `--extra-arg` — see `generate_batch/v1`.)
 3. **Dispatch takes SEQUENTIALLY** on a single GPU (one render at a time;
    concurrent dispatch contends for VRAM).
 4. Run as a **background job** — one command per take:
 
    ```bash
    python scripts/generate_take.py --session studio/sessions/<image-id> --seed <seed>
+
+   # N takes, one pipeline load (~100 s paid once — the fast way to ask for more)
+   python scripts/generate_take.py --session studio/sessions/<image-id> --takes 3
    ```
 
    Overrides (first-class flags; see also the model-guide skill):
@@ -95,17 +102,19 @@ Guard against it:
    step 2. Never leave the session waiting on an id that shows no evidence
    of running.
 
-## Cost guidance
+## Cost guidance (measured on RTX 4090, nf4 — see model-guide)
 
-- **Preset is the speed knob**: V4_TURBO_12 (~12 steps) for fast drafts,
-  V4_DEFAULT_20 for the middle, V4_QUALITY_48 for finals. When iterating a
-  caption with the user, render **TURBO drafts first** and only render
-  QUALITY once the composition is approved.
-- **Size costs VRAM/seconds**: 1024×1024 iterates fastest; 2048-wide finals
-  cost more of both. Iterate small, finish big.
-- **nf4 vs fp8**: nf4 (CUDA-only) is the quality default; fp8 runs anywhere.
-  Switching quantization changes the pixels — record which take used which
-  (metadata always does).
+- **Load dominates single takes**: ~100 s per fresh process + diffusion.
+  TURBO @1MP ≈ 115 s/take alone, but 3× batched ≈ 157 s total. Never dispatch
+  N separate single-take jobs for one request — batch them.
+- **Preset is the diffusion knob**: V4_TURBO_12 (~19 s @1MP) for fast drafts,
+  V4_DEFAULT_20 (~29 s) for the middle, V4_QUALITY_48 (~72 s @1MP) for finals.
+  When iterating a caption with the user, render **TURBO drafts first** and
+  only render QUALITY once the composition is approved.
+- **Size costs super-linearly**: QUALITY at 1024×1536 cost ~456 s end to end
+  vs ~172 s at 1024×1024. Iterate small, finish big.
+- **nf4 only on this machine**: fp8 measured 39× slower per eval here — never
+  suggest it without fresh numbers.
 
 ## Failure handling
 

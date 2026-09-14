@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render one seeded Ideogram 4 take for a prepared session folder.
+"""Render seeded Ideogram 4 takes for a prepared session folder.
 
 Usage:
     python scripts/generate_take.py --session studio/sessions/<image-id> [--seed 7]
@@ -8,8 +8,14 @@ Usage:
         [--quantization nf4|fp8] [--no-magic-prompt] [--dry-run]
         [--extra-arg "--device cuda"]
 
-Single-model dispatcher AND generator in one file (there is only one image
-model, so no backend routing table like agentic-music's generate_take.py).
+    # Batch: N takes, ONE pipeline load (amortises ~100 s of model loading)
+    python scripts/generate_take.py --session studio/sessions/<image-id> --takes 3
+
+Single-model dispatcher AND single-take generator in one file (there is only
+one image model, so no backend routing table like agentic-music's
+generate_take.py). Batch mode (--takes N>1) drives scripts/render_batch.py
+instead, which keeps one pipeline resident for all N renders: the load cost
+is paid once, not N times.
 Reads the session's caption.json (the structured JSON caption compose-brief
 wrote), pre-flights it with scripts/verify_caption.py, then drives upstream's
 oss/ideogram4/run_inference.py as a subprocess. With --dry-run it writes a
@@ -41,6 +47,12 @@ Sidecar schema — generate_meta/v1 (takes/take-NN.metadata.json):
      "magic_prompt": {"used": false, "model": null},
      "caption_sha256": "...", "bytes": 12345, "elapsed_s": 61.2,
      "started_utc": "...", "extra_args": [...], "warnings": [...]}
+
+Batch JSON contract (stdout, --takes N>1) — generate_batch/v1:
+    {"schema": "generate_batch/v1", "ok": true, "model": "ideogram4",
+     "load_s": 95.4, "takes": [<generate/v1 take objects, without schema>],
+     "sampler_preset": "...", "quantization": "...", "dry_run": false,
+     "error": null}
 
 Exit codes: 0 success; 2 bad inputs/config (missing session or caption.json,
 caption verification errors, unparseable --extra-arg, bad dimensions);
@@ -151,6 +163,11 @@ def main() -> int:
     parser.add_argument("--config", type=Path,
                         default=REPO_ROOT / "configs" / "provider.toml")
     parser.add_argument("--take-id", type=int, default=None)
+    parser.add_argument("--takes", type=int, default=1,
+                        help="Render N takes in one process (one pipeline "
+                             "load). Seeds cycle [generation].seeds; explicit "
+                             "--seed, --use-magic-prompt and --extra-arg are "
+                             "rejected in batch mode.")
     parser.add_argument("--width", type=int, default=None)
     parser.add_argument("--height", type=int, default=None)
     parser.add_argument("--sampler-preset", default=None,
@@ -197,9 +214,28 @@ def main() -> int:
 
     takes_dir = session / "takes"
     takes_dir.mkdir(parents=True, exist_ok=True)
-    take_num = args.take_id or _next_take_id(takes_dir)
-    take = f"take-{take_num:02d}"
-    seed = args.seed if args.seed is not None else seeds[(take_num - 1) % len(seeds)]
+    if args.takes < 1:
+        return fail("--takes must be >= 1")
+    batch = args.takes > 1
+    if batch and args.seed is not None:
+        return fail("explicit --seed is rejected with --takes N>1: omit it "
+                    "to cycle [generation].seeds, or render singly")
+    if batch and args.use_magic_prompt:
+        return fail("--use-magic-prompt is rejected with --takes N>1: "
+                    "render singly")
+    if batch and args.extra_arg:
+        return fail("--extra-arg is rejected with --takes N>1: render singly")
+    first_num = args.take_id or _next_take_id(takes_dir)
+    take_nums = list(range(first_num, first_num + args.takes))
+    # Collision check for the whole range BEFORE spending GPU time.
+    for num in take_nums:
+        if (takes_dir / f"take-{num:02d}.png").exists():
+            return fail(f"takes/take-{num:02d}.png already exists; pass "
+                        f"--take-id to choose a free range")
+    plan = [(f"take-{num:02d}",
+             args.seed if args.seed is not None
+             else seeds[(num - 1) % len(seeds)])
+            for num in take_nums]
 
     width = args.width or int(ide_cfg.get("width", 1024))
     height = args.height or int(ide_cfg.get("height", 1024))
@@ -260,10 +296,6 @@ def main() -> int:
         caption_sha = hashlib.sha256(
             caption_text.encode("utf-8")).hexdigest()
 
-    out_png = takes_dir / f"{take}.png"
-    started = datetime.now(UTC).isoformat(timespec="seconds")
-    t0 = time.monotonic()
-
     # The model runtime lives in its own venv (torch + ideogram4 are NOT
     # installed in the driving interpreter). Prefer it; fall back to
     # sys.executable only when setup has never run.
@@ -275,12 +307,143 @@ def main() -> int:
     backend_python = (str(venv_python) if venv_python.is_file()
                       else sys.executable)
 
+    def _finalize(take: str, seed: int, out_png: Path,
+                  dims: tuple[int, int] | None, nbytes: int,
+                  elapsed: float, started: str) -> dict:
+        """Freeze provenance snapshots + sidecar; return the take object."""
+        if caption_path.is_file():
+            (takes_dir / f"{take}.caption.json").write_text(
+                caption_path.read_text(encoding="utf-8"), encoding="utf-8")
+        brief_path = session / "brief.md"
+        if brief_path.is_file():
+            (takes_dir / f"{take}.brief.md").write_text(
+                brief_path.read_text(encoding="utf-8"), encoding="utf-8")
+        meta = {
+            "schema": "generate_meta/v1",
+            "model": "ideogram4",
+            "take": take,
+            "seed": seed,
+            "width": width,
+            "height": height,
+            "actual_width": dims[0] if dims else None,
+            "actual_height": dims[1] if dims else None,
+            "sampler_preset": sampler_preset,
+            "quantization": quantization,
+            "python": backend_python,
+            "magic_prompt": {"used": magic_used,
+                             "model": magic_model if magic_used else None},
+            "caption_sha256": caption_sha or None,
+            "bytes": nbytes,
+            "elapsed_s": elapsed,
+            "started_utc": started,
+            "extra_args": extra_tokens,
+            "warnings": warnings,
+            "dry_run": args.dry_run,
+        }
+        (takes_dir / f"{take}.metadata.json").write_text(
+            json.dumps(meta, indent=2), encoding="utf-8")
+        return {"take": take, "png": f"takes/{take}.png",
+                "metadata": f"takes/{take}.metadata.json", "bytes": nbytes,
+                "width": width, "height": height, "elapsed_s": elapsed,
+                "seed": seed, "sampler_preset": sampler_preset,
+                "quantization": quantization,
+                "magic_prompt_used": magic_used,
+                "dry_run": args.dry_run,
+                **({"extra_args": extra_tokens} if extra_tokens else {}),
+                **({"warnings": warnings} if warnings else {})}
+
     magic_used = bool(args.use_magic_prompt)
+
+    def _run_batch() -> int:
+        """Render plan[] in one backend process via scripts/render_batch.py."""
+        batch_started = datetime.now(UTC).isoformat(timespec="seconds")
+        if args.dry_run:
+            results = []
+            for (btake, bseed) in plan:
+                bout = takes_dir / f"{btake}.png"
+                bt0 = time.monotonic()
+                _placeholder_png(bout, bseed)
+                bdims = _png_dimensions(bout)
+                belapsed = round(time.monotonic() - bt0, 1)
+                results.append(_finalize(
+                    btake, bseed, bout, bdims, bout.stat().st_size,
+                    belapsed, batch_started))
+            emit({"schema": "generate_batch/v1", "ok": True,
+                  "model": "ideogram4", "load_s": 0.0, "takes": results,
+                  "sampler_preset": sampler_preset,
+                  "quantization": quantization, "dry_run": True,
+                  **({"warnings": warnings} if warnings else {}),
+                  "error": None})
+            return 0
+        renderer = REPO_ROOT / "scripts" / "render_batch.py"
+        if not renderer.is_file():
+            return fail(f"{renderer} missing", model="ideogram4")
+        cmd = [backend_python, str(renderer),
+               "--caption", caption_text or "",
+               "--out-dir", str(takes_dir),
+               "--takes", ",".join(t for t, _ in plan),
+               "--seeds", ",".join(str(s) for _, s in plan),
+               "--width", str(width), "--height", str(height),
+               "--sampler-preset", sampler_preset,
+               "--quantization", quantization]
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8",
+            errors="replace", check=False)
+        try:
+            inner = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            sys.stderr.write(
+                f"[generate_take] render_batch.py rc={proc.returncode} "
+                f"did not print JSON\n"
+                f"--- stdout tail ---\n"
+                f"{chr(10).join(proc.stdout.splitlines()[-15:])}\n"
+                f"--- stderr tail ---\n"
+                f"{chr(10).join(proc.stderr.splitlines()[-15:])}\n")
+            return fail("render_batch.py did not emit a "
+                        "render_batch_inner/v1 JSON document "
+                        f"(rc={proc.returncode})",
+                        code=8, model="ideogram4")
+        if not isinstance(inner, dict) or not inner.get("ok"):
+            return fail("render_batch.py failed: "
+                        f"{inner.get('error') if isinstance(inner, dict) else inner!r}",
+                        code=8, model="ideogram4")
+        results = []
+        for item in inner.get("takes", []):
+            bout = takes_dir / f"{item['take']}.png"
+            if not bout.is_file() or bout.stat().st_size == 0:
+                return fail(f"render_batch.py reported {item['take']} "
+                            f"but wrote no PNG",
+                            code=8, model="ideogram4")
+            bdims = _png_dimensions(bout)
+            results.append(_finalize(
+                item["take"], item["seed"], bout, bdims,
+                bout.stat().st_size, float(item.get("elapsed_s", 0.0)),
+                batch_started))
+        emit({"schema": "generate_batch/v1", "ok": True, "model": "ideogram4",
+              "load_s": inner.get("load_s"), "takes": results,
+              "sampler_preset": sampler_preset,
+              "quantization": quantization, "dry_run": False,
+              **({"warnings": warnings} if warnings else {}),
+              "error": None})
+        return 0
+
+    if batch:
+        return _run_batch()
+
+    (take, seed) = plan[0]
+    out_png = takes_dir / f"{take}.png"
+    started = datetime.now(UTC).isoformat(timespec="seconds")
+    t0 = time.monotonic()
     if args.dry_run:
-        if out_png.exists():
-            return fail(f"{out_png} already exists; pass --take-id to choose")
         _placeholder_png(out_png, seed)
         dims = _png_dimensions(out_png)
+        elapsed = round(time.monotonic() - t0, 1)
+        result = _finalize(take, seed, out_png, dims,
+                           out_png.stat().st_size, elapsed, started)
+        emit({"schema": "generate/v1", "ok": True, "model": "ideogram4",
+              **result, "error": None})
+        return 0
+
     else:
         runner = REPO_ROOT / "oss" / "ideogram4" / "run_inference.py"
         if not runner.is_file():
@@ -325,52 +488,10 @@ def main() -> int:
         dims = _png_dimensions(out_png)
 
     elapsed = round(time.monotonic() - t0, 1)
-    nbytes = out_png.stat().st_size
-
-    # Frozen provenance snapshots: later brief/caption edits never rewrite
-    # what a take was rendered from.
-    if caption_path.is_file():
-        (takes_dir / f"{take}.caption.json").write_text(
-            caption_path.read_text(encoding="utf-8"), encoding="utf-8")
-    brief_path = session / "brief.md"
-    if brief_path.is_file():
-        (takes_dir / f"{take}.brief.md").write_text(
-            brief_path.read_text(encoding="utf-8"), encoding="utf-8")
-
-    meta = {
-        "schema": "generate_meta/v1",
-        "model": "ideogram4",
-        "take": take,
-        "seed": seed,
-        "width": width,
-        "height": height,        "actual_width": dims[0] if dims else None,
-        "actual_height": dims[1] if dims else None,
-        "sampler_preset": sampler_preset,
-        "quantization": quantization,
-        "python": backend_python,
-        "magic_prompt": {"used": magic_used,
-                         "model": magic_model if magic_used else None},
-        "caption_sha256": caption_sha or None,
-        "bytes": nbytes,
-        "elapsed_s": elapsed,
-        "started_utc": started,
-        "extra_args": extra_tokens,
-        "warnings": warnings,
-        "dry_run": args.dry_run,
-    }
-    meta_path = takes_dir / f"{take}.metadata.json"
-    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-
+    result = _finalize(take, seed, out_png, dims,
+                       out_png.stat().st_size, elapsed, started)
     emit({"schema": "generate/v1", "ok": True, "model": "ideogram4",
-          "take": take, "png": f"takes/{take}.png",
-          "metadata": f"takes/{take}.metadata.json", "bytes": nbytes,
-          "width": width, "height": height, "elapsed_s": elapsed,
-          "seed": seed, "sampler_preset": sampler_preset,
-          "quantization": quantization, "magic_prompt_used": magic_used,
-          "dry_run": args.dry_run,
-          **({"extra_args": extra_tokens} if extra_tokens else {}),
-          **({"warnings": warnings} if warnings else {}),
-          "error": None})
+          **result, "error": None})
     return 0
 
 

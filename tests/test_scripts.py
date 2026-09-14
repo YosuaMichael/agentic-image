@@ -14,10 +14,11 @@ EXPECTED_SCHEMAS = {
     "generate_take.py": "generate/v1",
     "setup_ideogram.py": "setup_ideogram/v1",
     "serve_artifacts.py": "artifacts-index/v1",
+    "render_batch.py": "render_batch_inner/v1",
 }
 
 ADDITIONAL_SCHEMAS = {
-    "generate_take.py": ["generate_meta/v1"],
+    "generate_take.py": ["generate_meta/v1", "generate_batch/v1"],
 }
 
 
@@ -31,7 +32,7 @@ def run(script: str, *args: str) -> subprocess.CompletedProcess[str]:
 def test_scripts_import_cleanly() -> None:
     for script in ("hardware_audit.py", "verify_caption.py",
                    "generate_take.py", "setup_ideogram.py",
-                   "serve_artifacts.py"):
+                   "serve_artifacts.py", "render_batch.py"):
         src = (SCRIPTS / script).read_text(encoding="utf-8")
         compile(src, script, "exec")
 
@@ -136,6 +137,56 @@ def test_generate_dry_run_end_to_end(tmp_path: Path) -> None:
     assert (takes / "take-01.caption.json").is_file()
     meta = json.loads((takes / "take-01.metadata.json").read_text())
     assert meta["schema"] == "generate_meta/v1"
+
+
+def test_batch_dry_run_renders_n_takes(tmp_path: Path) -> None:
+    session = tmp_path / "20260914-000000-batch"
+    (session / "takes").mkdir(parents=True)
+    (session / "brief.md").write_text("# batch\nA red lighthouse.",
+                                      encoding="utf-8")
+    (session / "caption.json").write_text(json.dumps({
+        "high_level_description": "A red lighthouse at dusk.",
+        "style_description": {
+            "aesthetics": "serene",
+            "lighting": "dusk glow",
+            "photo": "35mm",
+            "medium": "photograph",
+        },
+        "compositional_deconstruction": {
+            "background": "Rocky coast under a violet sky.",
+            "elements": [{"type": "obj",
+                          "desc": "A tall red lighthouse."}],
+        }}), encoding="utf-8")
+    config = REPO_ROOT / "configs" / "provider.toml"
+    proc = run("generate_take.py", "--session", str(session),
+               "--takes", "3", "--config", str(config), "--dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    doc = json.loads(proc.stdout)
+    assert doc["schema"] == "generate_batch/v1" and doc["ok"] is True
+    assert [t["take"] for t in doc["takes"]] == [
+        "take-01", "take-02", "take-03"]
+    # Seeds cycle [generation].seeds = [7, 42, 1234] by take number.
+    assert [t["seed"] for t in doc["takes"]] == [7, 42, 1234]
+    for take in ("take-01", "take-02", "take-03"):
+        assert (session / "takes" / f"{take}.png").is_file()
+        assert (session / "takes" / f"{take}.metadata.json").is_file()
+        assert (session / "takes" / f"{take}.caption.json").is_file()
+
+
+def test_batch_rejects_explicit_seed(tmp_path: Path) -> None:
+    session = tmp_path / "20260914-000000-batch-seed"
+    (session / "takes").mkdir(parents=True)
+    (session / "caption.json").write_text(json.dumps({
+        "compositional_deconstruction": {
+            "background": "x.",
+            "elements": [{"type": "obj", "desc": "y."}],
+        }}), encoding="utf-8")
+    proc = run("generate_take.py", "--session", str(session),
+               "--takes", "2", "--seed", "7", "--dry-run")
+    assert proc.returncode == 2
+    doc = json.loads(proc.stdout)
+    assert doc["schema"] == "generate/v1"
+    assert doc["ok"] is False
 
 
 def test_serve_builds_index_for_dry_run_session(tmp_path: Path) -> None:

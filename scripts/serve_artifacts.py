@@ -9,7 +9,11 @@ Runs in the foreground (wrap in a persistent background job). Designed to sit
 behind `tailscale serve` so other devices on the tailnet can view and download
 generated images from a browser:
 
-    tailscale serve --bg --https=8443 http://127.0.0.1:8788
+    tailscale serve --bg --https=8444 http://127.0.0.1:8788
+
+Note: --https=8443 belongs to the sibling agentic-music gallery; this
+studio uses 8444 so both can coexist. Port 443 stays reserved for the
+DeepSeek Harness web GUI — never serve the gallery there.
 
 Endpoints:
     /healthz                 liveness probe (always open)
@@ -388,7 +392,7 @@ def main() -> int:
         "root": str(root),
         "url": f"http://{args.host}:{args.port}",
         "tailscale_hint": (
-            f"tailscale serve --bg --https=8443 http://127.0.0.1:{args.port}"
+            f"tailscale serve --bg --https=8444 http://127.0.0.1:{args.port}"
         ),
         "token_protected": args.token is not None,
     }))

@@ -8,8 +8,14 @@ Usage:
 
 Qwen-Image-2.1 reads PLAIN TEXT (prompt.txt) — there is no caption.json
 discipline for this engine (that belongs to the legacy ideogram4 path).
-The dispatcher is stdlib-only; the backend (scripts/render_qwen21.py) runs in
-the qwen venv (torch + diffusers) with weights from the agreed cache.
+The dispatcher is stdlib-only. Backends:
+    - full: scripts/render_qwen21.py in the qwen venv (torch + diffusers).
+    - q8_0: stable-diffusion.cpp sd-cli (Unsloth GGUF denoiser + bf16 VAE +
+      Q4_K_XL text encoder; the GGUF layout targets the sd.cpp ecosystem —
+      diffusers' single-file loader shape-mismatches). The prompt travels
+      via --prompt-file (never -p: native argv re-splits embedded quotes).
+A VRAM poller samples nvidia-smi during either backend (peak_vram_mib, null
+when nvidia-smi is absent).
 
 Session inputs:
     prompt.txt   REQUIRED — the plain-text prompt the model reads
@@ -27,6 +33,7 @@ JSON contract (stdout) — generate_qwen21/v1:
      "metadata": "takes/take-01.metadata.json", "bytes": 12345,
      "width": 1024, "height": 1024, "elapsed_s": 61.2, "seed": 42,
      "steps": 40, "true_cfg_scale": 1.0, "quantization": "full",
+     "backend": "diffusers", "peak_vram_mib": 12345,
      "dry_run": false, "warnings": [...], "error": null}
 
 Sidecar schema — generate_qwen21_meta/v1 (takes/take-NN.metadata.json):
@@ -42,9 +49,12 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import struct
 import subprocess
 import sys
+import tempfile
+import threading
 import time
 import tomllib
 import zlib
@@ -116,6 +126,118 @@ def _placeholder_png(path: Path, seed: int, width: int = 64,
     png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
            + chunk(b"IDAT", compressed) + chunk(b"IEND", b""))
     path.write_bytes(png)
+
+
+class _VramPoller:
+    """Poll nvidia-smi in a thread; records peak used MiB (None if absent)."""
+
+    def __init__(self, interval: float = 1.0) -> None:
+        self.interval = interval
+        self.peak: int | None = None
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+
+    def _sample(self) -> int | None:
+        try:
+            proc = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.used",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=15, check=False)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if proc.returncode != 0 or not proc.stdout:
+            return None
+        try:
+            return max(int(float(p)) for p in proc.stdout.split(",")
+                       if p.strip())
+        except ValueError:
+            return None
+
+    def _loop(self) -> None:
+        while not self._stop.wait(self.interval):
+            mib = self._sample()
+            if mib is not None and (self.peak is None or mib > self.peak):
+                self.peak = mib
+
+    def __enter__(self) -> _VramPoller:
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._stop.set()
+        self._thread.join(timeout=10)
+
+
+def _resolve_sdcli(qw: dict) -> tuple[Path | None, Path | None,
+                                     Path | None, str | None]:
+    """Locate the sd-cli binary + Unsloth companions; error string or None."""
+    tools = REPO_ROOT / ".tools" / "sd.cpp" / "bin"
+    exe = Path(os.path.expanduser(
+        str(qw.get("sd_cli", str(tools / "sd-cli.exe")))))
+    if not exe.is_absolute():
+        exe = REPO_ROOT / exe
+    comp = Path(os.path.expanduser(
+        str(qw.get("gguf_companions_dir", "models/gguf-companions"))))
+    if not comp.is_absolute():
+        comp = REPO_ROOT / comp
+    vae = Path(os.path.expanduser(str(qw.get(
+        "sd_vae", str(comp / "vae" / "qwen_image_2.1_vae_bf16.safetensors")))))
+    if not vae.is_absolute():
+        vae = REPO_ROOT / vae
+    llm = Path(os.path.expanduser(str(qw.get(
+        "sd_llm", str(comp / "Qwen3-VL-8B-Instruct-UD-Q4_K_XL.gguf")))))
+    if not llm.is_absolute():
+        llm = REPO_ROOT / llm
+    for label, path in (("sd-cli binary", exe), ("VAE", vae),
+                        ("text-encoder GGUF", llm)):
+        if not path.is_file():
+            return None, None, None, (
+                f"{label} not found ({path}): Q8 needs the sd.cpp backend — "
+                f"see plans/2026-09-24-qwen-image-2.1.md")
+    return exe, vae, llm, None
+
+
+def _run_sdcli(exe: Path, vae: Path, llm: Path, gguf: Path, prompt: str,
+               out_png: Path, width: int, height: int, steps: int,
+               cfg: float, seed: int) -> tuple[bool, float, float | None,
+                                              str | None]:
+    """Render one take via sd-cli. Returns (ok, total_s, diffusion_s, err).
+
+    The prompt travels via --prompt-file (never -p: native argv re-splits
+    embedded quotes on Windows — see studio/learnings/LEARNINGS.md).
+    """
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False,
+                                     encoding="utf-8") as fh:
+        fh.write(prompt)
+        prompt_file = fh.name
+    try:
+        t0 = time.monotonic()
+        proc = subprocess.run(
+            [str(exe), "--diffusion-model", str(gguf),
+             "--vae", str(vae), "--llm", str(llm),
+             "--prompt-file", prompt_file,
+             "--steps", str(steps), "--cfg-scale", str(cfg),
+             "--sampling-method", "euler",
+             "-W", str(width), "-H", str(height), "-s", str(seed),
+             "-o", str(out_png)],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", check=False)
+        total = round(time.monotonic() - t0, 1)
+        log = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        if proc.returncode != 0 or not out_png.is_file() \
+                or out_png.stat().st_size == 0:
+            tail = "\n".join(log.splitlines()[-8:])
+            return False, total, None, (
+                f"sd-cli failed (rc={proc.returncode}); log tail:\n{tail}")
+        match = re.search(r"generate_image completed in ([\d.]+)s", log)
+        diffusion = round(float(match.group(1)), 1) if match else None
+        return True, total, diffusion, None
+    finally:
+        try:
+            Path(prompt_file).unlink()
+        except OSError:
+            pass
 
 
 def main() -> int:
@@ -200,27 +322,52 @@ def main() -> int:
     backend_env: dict[str, str] | None = None
     repo_dir_arg: str | None = None
     if not args.dry_run:
-        snaps = sorted(repo_snapshot_base.iterdir()) \
-            if repo_snapshot_base.is_dir() else []
-        if not snaps:
-            return fail(f"full weights not in the agreed cache ({hf_cache}): "
-                        f"run scripts/setup_qwen21.py first (one-time download, "
-                        f"no token needed)", model="qwen21")
-        repo_dir_arg = str(snaps[0])
-        if quantization == "q8_0" and not gguf_path.is_file():
-            return fail(f"Q8 GGUF not found ({gguf_path}): run "
-                        f"scripts/setup_qwen21.py --quantization q8_0",
-                        model="qwen21")
-        backend_env = dict(os.environ)
-        backend_env["HF_HUB_CACHE"] = str(hf_cache)
-        backend_env["HF_HUB_OFFLINE"] = "1"
+        if quantization == "q8_0":
+            # sd-cli backend is self-contained (GGUF + companions); the full
+            # safetensors repo is NOT required.
+            if not gguf_path.is_file():
+                return fail(f"Q8 GGUF not found ({gguf_path}): run "
+                            f"scripts/setup_qwen21.py --quantization q8_0",
+                            model="qwen21")
+        else:
+            snaps = sorted(repo_snapshot_base.iterdir()) \
+                if repo_snapshot_base.is_dir() else []
+            if not snaps:
+                return fail(
+                    f"full weights not in the agreed cache ({hf_cache}): "
+                    f"run scripts/setup_qwen21.py first (one-time download, "
+                    f"no token needed)", model="qwen21")
+            repo_dir_arg = str(snaps[0])
+            backend_env = dict(os.environ)
+            backend_env["HF_HUB_CACHE"] = str(hf_cache)
+            backend_env["HF_HUB_OFFLINE"] = "1"
 
     started = datetime.now(UTC).isoformat(timespec="seconds")
     t0 = time.monotonic()
     out_png = takes_dir / f"{take}.png"
     load_s = 0.0
+    backend = "sd-cli" if quantization == "q8_0" else "diffusers"
+    peak_vram_mib: int | None = None
+    elapsed = 0.0
     if args.dry_run:
         _placeholder_png(out_png, seed)
+        elapsed = round(time.monotonic() - t0, 1)
+    elif quantization == "q8_0":
+        # Unsloth GGUF layout targets the sd.cpp ecosystem (diffusers'
+        # single-file loader shape-mismatches) — render via sd-cli.
+        exe, vae, llm, err = _resolve_sdcli(qw)
+        if err is not None:
+            return fail(err, model="qwen21")
+        assert exe is not None and vae is not None and llm is not None
+        with _VramPoller() as poller:
+            ok, total, diffusion, err = _run_sdcli(
+                exe, vae, llm, gguf_path, prompt, out_png,
+                width, height, steps, guidance, seed)
+            peak_vram_mib = poller.peak
+        if not ok:
+            return fail(str(err), code=8, model="qwen21")
+        elapsed = total
+        load_s = round(total - (diffusion or total), 1)
     else:
         renderer = REPO_ROOT / "scripts" / "render_qwen21.py"
         cmd = [backend_python, str(renderer),
@@ -233,9 +380,11 @@ def main() -> int:
                "--repo-dir", repo_dir_arg or ""]
         if quantization == "q8_0":
             cmd += ["--gguf-path", str(gguf_path)]
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, encoding="utf-8",
-            errors="replace", check=False, env=backend_env)
+        with _VramPoller() as poller:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, encoding="utf-8",
+                errors="replace", check=False, env=backend_env)
+            peak_vram_mib = poller.peak
         try:
             inner = json.loads(proc.stdout)
         except json.JSONDecodeError:
@@ -259,7 +408,6 @@ def main() -> int:
             return fail("render_qwen21.py reported ok but wrote no PNG",
                         code=8, model="qwen21")
     dims = _png_dimensions(out_png)
-    elapsed = round(time.monotonic() - t0, 1) if args.dry_run else elapsed
 
     (takes_dir / f"{take}.prompt.txt").write_text(prompt, encoding="utf-8")
     brief_path = session / "brief.md"
@@ -278,11 +426,13 @@ def main() -> int:
         "steps": steps,
         "true_cfg_scale": guidance,
         "quantization": quantization,
+        "backend": backend,
         "python": backend_python,
         "prompt_sha256": prompt_sha,
         "bytes": out_png.stat().st_size,
         "elapsed_s": elapsed,
         "load_s": load_s,
+        "peak_vram_mib": peak_vram_mib,
         "started_utc": started,
         "warnings": warnings,
         "dry_run": args.dry_run,
@@ -295,7 +445,8 @@ def main() -> int:
           "bytes": out_png.stat().st_size, "width": width, "height": height,
           "elapsed_s": elapsed, "load_s": load_s, "seed": seed,
           "steps": steps, "true_cfg_scale": guidance,
-          "quantization": quantization, "dry_run": args.dry_run,
+          "quantization": quantization, "backend": backend,
+          "dry_run": args.dry_run,
           **({"warnings": warnings} if warnings else {}), "error": None})
     return 0
 

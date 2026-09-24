@@ -130,6 +130,12 @@ height = 1024
 hf_cache = "models/hf-hub"
 gguf_dir = "models/gguf"
 
+# --- sd.cpp Q8 backend -----------------------------------------------------
+# Unsloth GGUF layout targets the sd.cpp ecosystem: prebuilt binary +
+# companions (all gitignored; sd-cli downloaded once into .tools/).
+sd_cli = ".tools/sd.cpp/bin/sd-cli.exe"
+gguf_companions_dir = "models/gguf-companions"
+
 # --- Runtime placement -----------------------------------------------------
 # Separate venv from Ideogram (diffusers-from-git must not disturb torch pin).
 venv_dir = "~/.venvs/agentic-image-qwen21"

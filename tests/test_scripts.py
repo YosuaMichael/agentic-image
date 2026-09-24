@@ -95,12 +95,50 @@ def test_qwen21_dry_run_end_to_end(tmp_path: Path) -> None:
     assert doc["dry_run"] is True and doc["take"] == "take-01"
     assert doc["quantization"] == "full" and doc["steps"] == 40
     assert doc["true_cfg_scale"] == 1.0
+    assert doc["backend"] == "diffusers"
     png = takes / "take-01.png"
     assert png.is_file() and png.stat().st_size > 0
     assert (takes / "take-01.metadata.json").is_file()
     assert (takes / "take-01.prompt.txt").is_file()
     meta = json.loads((takes / "take-01.metadata.json").read_text())
     assert meta["schema"] == "generate_qwen21_meta/v1"
+
+
+def test_qwen21_q8_dry_run_reports_backend(tmp_path: Path) -> None:
+    session = tmp_path / "20260924-000000-qwen-q8dry"
+    (session / "takes").mkdir(parents=True)
+    (session / "prompt.txt").write_text("A neon sign.", encoding="utf-8")
+    config = REPO_ROOT / "configs" / "provider.toml"
+    proc = run("generate_qwen21_take.py", "--session", str(session),
+               "--quantization", "q8_0", "--config", str(config), "--dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    doc = json.loads(proc.stdout)
+    assert doc["schema"] == "generate_qwen21/v1" and doc["ok"] is True
+    assert doc["quantization"] == "q8_0" and doc["backend"] == "sd-cli"
+
+
+def test_qwen21_q8_missing_sdcli_fails_fast(tmp_path: Path) -> None:
+    session = tmp_path / "20260924-000000-qwen-q8cold"
+    (session / "takes").mkdir(parents=True)
+    (session / "prompt.txt").write_text("A neon sign.", encoding="utf-8")
+    gguf = tmp_path / "fake.gguf"
+    gguf.write_bytes(b"fake")
+    config = tmp_path / "provider.toml"
+    config.write_text(
+        "[models]\ndefault = \"qwen21\"\n"
+        "[models.qwen21]\nengine = \"qwen21\"\n"
+        "[qwen21]\nquantization = \"q8_0\"\n"
+        f"gguf_dir = \"{tmp_path.as_posix()}\"\n"
+        "gguf_file_q8 = \"fake.gguf\"\n"
+        "hf_cache = \"does-not-exist\"\n"
+        "sd_cli = \"does-not-exist-sd-cli\"\n"
+        "[generation]\nseeds = [42]\n", encoding="utf-8")
+    proc = run("generate_qwen21_take.py", "--session", str(session),
+               "--quantization", "q8_0", "--config", str(config))
+    assert proc.returncode == 2
+    doc = json.loads(proc.stdout)
+    assert doc["schema"] == "generate_qwen21/v1" and doc["ok"] is False
+    assert "sd-cli" in doc["error"]
 
 
 def test_qwen21_missing_prompt_exits_2(tmp_path: Path) -> None:

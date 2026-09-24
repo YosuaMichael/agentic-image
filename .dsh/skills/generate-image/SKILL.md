@@ -57,6 +57,13 @@ description: >
    *1 more take* / *3 more takes* / *run auto-review* / *done*.
    Cost rule: **iterate at 1024², finish big** (native 2048-class costs
    ~4× pixels).
+6. **Edit discipline (Qwen): re-base, don't chain.** Every `--edit-image`
+   pass fully regenerates the frame (fresh noise + 16× VAE round-trip), so
+   quality compounds downward 2–4 passes deep. Prefer ONE merged edit prompt
+   against the ORIGINAL (or best) take over sequential fix passes; always
+   pass `--output-resolution <long-side>` (e.g. 1536 at 1536×1024) so the
+   conditioner isn't funneled through 1024-class. Details:
+   `plans/2026-09-24-qwen21-quality-research.md`.
 
 ## Procedure — Ideogram 4 (legacy)
 

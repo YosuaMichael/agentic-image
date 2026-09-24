@@ -56,6 +56,18 @@ def main() -> int:
     parser.add_argument("--height", required=True, type=int)
     parser.add_argument("--steps", required=True, type=int)
     parser.add_argument("--true-cfg-scale", required=True, type=float)
+    parser.add_argument("--negative-prompt", default=None,
+                        help="Negative prompt (only takes effect with "
+                             "--true-cfg-scale > 1: true CFG doubles the "
+                             "work per step; official path is cfg 1.0 "
+                             "with no negative prompt)")
+    parser.add_argument("--output-resolution", default=None, type=int,
+                        help="Target side length for deriving dims/resizing "
+                             "condition images (pipeline default 1024; "
+                             "match the long side, e.g. 1536, for edits)")
+    parser.add_argument("--lora", default=None,
+                        help="Local path of a transformer LoRA (.safetensors)")
+    parser.add_argument("--lora-scale", default=1.0, type=float)
     parser.add_argument("--quantization", required=True,
                         choices=["full", "q8_0"])
     parser.add_argument("--repo-dir", default=None,
@@ -63,6 +75,9 @@ def main() -> int:
                              "(full text encoder + VAE source)")
     parser.add_argument("--gguf-path", default=None,
                         help="Local path of the Q8_0 GGUF denoiser")
+    parser.add_argument("--edit-image", default=None,
+                        help="Optional reference image for image editing "
+                             "(single-image edit; prompt describes the change)")
     args = parser.parse_args()
 
     import torch  # noqa: E402  (venv-only import; see docstring)
@@ -140,6 +155,15 @@ def main() -> int:
             pipe.enable_model_cpu_offload()
         except Exception:  # noqa: BLE001 - offload is best-effort
             pipe.to(device)
+        if args.lora:
+            # LoRA support verified on the installed revision
+            # (load_lora_weights present in 0.41.0.dev0).
+            pipe.load_lora_weights(args.lora)
+            try:
+                pipe.set_adapters(["default_0"],
+                                  adapter_weights=[args.lora_scale])
+            except Exception:  # noqa: BLE001 - older adapter API
+                pass
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         load_s = round(time.monotonic() - t0, 1)
@@ -150,6 +174,10 @@ def main() -> int:
 
     out_dir: Path = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
+    edit_img = None
+    if args.edit_image:
+        from PIL import Image  # noqa: E402
+        edit_img = Image.open(args.edit_image).convert("RGB")
     results = []
     for take, seed in zip(takes, seeds, strict=True):
         out_png = out_dir / f"{take}.png"
@@ -164,11 +192,15 @@ def main() -> int:
                                   else "cpu").manual_seed(seed)
             image = pipe(
                 prompt=args.prompt,
+                image=edit_img,
+                negative_prompt=args.negative_prompt,
                 width=args.width,
                 height=args.height,
                 num_inference_steps=args.steps,
                 true_cfg_scale=args.true_cfg_scale,
                 generator=gen,
+                **({"output_resolution": args.output_resolution}
+                   if args.output_resolution else {}),
             ).images[0]
             if torch.cuda.is_available():
                 torch.cuda.synchronize()

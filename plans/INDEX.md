@@ -12,3 +12,4 @@ to change one, write a new dated plan and register it here.
 | 2026-09-14 | [hermetic-weights](2026-09-14-hermetic-weights.md) | active | Repo-local weight cache; offline generation with no login/network |
 | 2026-09-14 | [IMPLEMENTATION-STATUS](IMPLEMENTATION-STATUS.md) | living | Build progress + acceptance tests |
 | 2026-09-24 | [qwen-image-2.1](2026-09-24-qwen-image-2.1.md) | active | Qwen-Image-2.1 default engine (full + Unsloth Q8), amends D1/D4 |
+| 2026-09-24 | [qwen21-quality-research](2026-09-24-qwen21-quality-research.md) | active | Quality params/edits/LoRAs: re-base rule, output-resolution, Fix LoRA |

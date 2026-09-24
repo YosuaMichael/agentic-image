@@ -4,7 +4,8 @@
 Usage:
     python scripts/generate_qwen21_take.py --session studio/sessions/<image-id>
         [--seed 42] [--quantization full|q8_0] [--steps 40]
-        [--width 1024 --height 1024] [--true-cfg-scale 1.0] [--dry-run]
+        [--width 1024 --height 1024] [--true-cfg-scale 1.0]
+        [--edit-image takes/take-01.png] [--dry-run]
 
 Qwen-Image-2.1 reads PLAIN TEXT (prompt.txt) — there is no caption.json
 discipline for this engine (that belongs to the legacy ideogram4 path).
@@ -252,6 +253,21 @@ def main() -> int:
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--true-cfg-scale", type=float, default=None)
     parser.add_argument("--quantization", default=None, choices=QUANTIZATIONS)
+    parser.add_argument("--edit-image", default=None,
+                        help="Reference take to edit (path to a PNG, e.g. "
+                             "takes/take-01.png). Diffusers/full backend only; "
+                             "the prompt describes the change.")
+    parser.add_argument("--negative-prompt", default=None,
+                        help="Negative prompt (needs --true-cfg-scale > 1; "
+                             "official path is cfg 1.0 with none)")
+    parser.add_argument("--output-resolution", default=None, type=int,
+                        help="Conditioning side length (edits: match the long "
+                             "side, e.g. 1536 at 1536x1024, to avoid the "
+                             "~1MP resampling funnel)")
+    parser.add_argument("--lora", default=None,
+                        help="Transformer LoRA file (.safetensors), e.g. the "
+                             "Qwen-Image-2.1 Fix LoRA; diffusers/full only")
+    parser.add_argument("--lora-scale", default=1.0, type=float)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -298,6 +314,31 @@ def main() -> int:
     quantization = args.quantization or str(qw.get("quantization", "full"))
     if quantization not in QUANTIZATIONS:
         return fail(f"unknown quantization {quantization!r}")
+    edit_src: Path | None = None
+    if args.edit_image:
+        if quantization == "q8_0":
+            return fail("--edit-image needs the full/diffusers backend "
+                        "(sd-cli edit wiring is open work)")
+        edit_src = Path(args.edit_image)
+        if not edit_src.is_absolute():
+            edit_src = session / edit_src
+        if not edit_src.is_file():
+            return fail(f"--edit-image not found: {edit_src}")
+    lora_path: Path | None = None
+    if args.lora:
+        if quantization == "q8_0":
+            return fail("--lora needs the full/diffusers backend")
+        lora_path = Path(args.lora)
+        if not lora_path.is_absolute():
+            lora_path = REPO_ROOT / lora_path
+        if not lora_path.is_file():
+            return fail(f"--lora not found: {lora_path}")
+    if args.negative_prompt and guidance <= 1.0:
+        warnings.append("negative prompt is ignored at true_cfg_scale <= 1.0 "
+                        "(pipeline only applies it with true CFG enabled)")
+    out_res = args.output_resolution
+    if out_res is not None and out_res <= 0:
+        return fail(f"--output-resolution must be positive (got {out_res})")
 
     venv_dir = Path(os.path.expanduser(
         str(qw.get("venv_dir", "~/.venvs/agentic-image-qwen21"))))
@@ -378,6 +419,15 @@ def main() -> int:
                "--steps", str(steps), "--true-cfg-scale", str(guidance),
                "--quantization", quantization,
                "--repo-dir", repo_dir_arg or ""]
+        if edit_src is not None:
+            cmd += ["--edit-image", str(edit_src)]
+        if args.negative_prompt:
+            cmd += ["--negative-prompt", args.negative_prompt]
+        if out_res is not None:
+            cmd += ["--output-resolution", str(out_res)]
+        if lora_path is not None:
+            cmd += ["--lora", str(lora_path),
+                    "--lora-scale", str(args.lora_scale)]
         if quantization == "q8_0":
             cmd += ["--gguf-path", str(gguf_path)]
         with _VramPoller() as poller:
@@ -427,6 +477,12 @@ def main() -> int:
         "true_cfg_scale": guidance,
         "quantization": quantization,
         "backend": backend,
+        "edit_source": (str(edit_src.relative_to(session))
+                        if edit_src is not None else None),
+        "negative_prompt": args.negative_prompt,
+        "output_resolution": out_res,
+        "lora": (str(lora_path) if lora_path is not None else None),
+        "lora_scale": args.lora_scale if lora_path is not None else None,
         "python": backend_python,
         "prompt_sha256": prompt_sha,
         "bytes": out_png.stat().st_size,

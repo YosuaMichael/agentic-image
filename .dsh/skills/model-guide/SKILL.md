@@ -1,15 +1,66 @@
 ---
 name: model-guide
 description: >
-  Parameter and capability reference for Ideogram 4, the image model this
-  studio drives: quantizations, sampler presets, resolutions, caption schema,
-  magic prompt, and safety. Read when a take needs a knob the first-class
-  flags do not expose, or when deciding size/preset/quantization for a render.
+  Parameter and capability reference for Qwen-Image-2.1 (default) and Ideogram 4
+  (legacy): quantizations, steps/presets, resolutions, prompt schema, and
+  safety. Read when a take needs a knob the first-class flags do not expose,
+  or when deciding size/steps/quantization for a render.
 ---
 
 # Skill: model-guide
 
-## Identity
+## 0. Qwen-Image-2.1 (DEFAULT engine)
+
+**Qwen-Image-2.1** — 7B single-stream DiT (32 layers) + Qwen3-VL-8B text
+encoder + 64-channel RGBA VAE (16× compression), flow matching + Euler
+scheduling. Upstream: [QwenLM/Qwen-Image-2.1](https://github.com/QwenLM/Qwen-Image-2.1),
+weights [`Qwen/Qwen-Image-2.1`](https://huggingface.co/Qwen/Qwen-Image-2.1)
+(UNGATED — no token, no gate click).
+**Weights: Qwen Research License — non-commercial use only.**
+Backend: `diffusers.QwenImage21Pipeline` (Day-0,
+[huggingface/diffusers#14804](https://github.com/huggingface/diffusers/pull/14804)),
+venv `~/.venvs/agentic-image-qwen21`. Plain-text `prompt.txt` in, PNG out.
+Measured numbers on this machine: see `plans/2026-09-24-qwen-image-2.1.md`
+comparison table (filled after the side-by-side runs).
+
+### 0.1 Quantization (quality/VRAM tradeoff)
+
+| Value | Weights | Verdict |
+|---|---|---|
+| `full` (default) | `Qwen/Qwen-Image-2.1` safetensors bf16 (~47 GB) | Best quality; needs ~24 GB-class GPU with CPU offload |
+| `q8_0` | Unsloth `qwen-image-2.1-Q8_0.gguf` denoiser (~7.5 GB) + full text encoder/VAE | Smaller download + VRAM; quality delta measured in the comparison plan |
+
+Set per take: `python scripts/generate_qwen21_take.py --session <dir> --quantization q8_0`.
+Takes record theirs in metadata.
+
+### 0.2 Steps / guidance / resolutions
+
+- `num_inference_steps` (default 40): the quality/speed knob — the analog of
+  Ideogram's TURBO/QUALITY presets, but a plain int (`--steps N`, 1–200).
+  Rule until measured otherwise: **iterate at 1024² / 40 steps, finish at
+  2048-class**.
+- `guidance_scale` (default 1.0, `--guidance-scale`).
+- Canvas: drafts 1024×1024; native 2K aspect table (upstream README):
+  1:1 2048² · 4:3 2400×1792 · 3:4 1792×2400 · 3:2 2528×1696 · 2:3 1696×2528 ·
+  16:9 2752×1536 · 9:16 1536×2752. Drafts stay 1024-class for speed.
+- Prompting: plain text. RGBA transparency trigger:
+  `This is an RGBA image with transparency. <desc>. The image has alpha
+  channel and the background is transparent.` Editing: pass reference
+  image(s) (up to 10) — wiring lands after the T2I comparison passes.
+- Prompt rewriting (optional, upstream): `Qwen/Qwen-Image-2.1-PE-T2I` /
+  `-PE-I2I` rewriter checkpoints expand short prompts — not wired here yet;
+  compose-brief's interview plays that role.
+
+### 0.3 Capabilities & limits
+
+- ✅ Photorealism, typography, native transparency (RGBA), image editing
+  (single + up to 10 refs), identity preservation, panorama/storyboard
+- ❌ No structured-caption control (bbox/palette conditioning is an Ideogram
+  thing); no negative-prompt field
+- ⚠️ One render at a time per GPU; seeds reproduce per diffusers
+  (`torch.Generator.manual_seed`; cross-machine bit-identity NOT promised)
+
+## Identity (legacy engine)
 
 **Ideogram 4** — 9.3B flow-matching text-to-image DiT (fully single-stream,
 34 layers), text encoder Qwen3-VL-8B (13 intermediate layers concatenated).

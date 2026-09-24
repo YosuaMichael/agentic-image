@@ -5,43 +5,45 @@
 ![Status](https://img.shields.io/badge/status-working%20experimental-orange)
 
 An agent-executable local image generation studio running the open-weights
-**Ideogram 4** model on your own GPU — orchestrated end to end by coding
+**Qwen-Image-2.1** model on your own GPU — orchestrated end to end by coding
 agents such as DeepSeek Harness or Claude Code that follow [AGENTS.md](AGENTS.md)
-plus five skills, instead of improvising commands.
+plus five skills, instead of improvising commands. (Legacy Ideogram 4 engine
+still included; see `plans/2026-09-24-qwen-image-2.1.md`.)
 
 > [!NOTE]
-> Working experimental software (v0.0.1). The pipeline — interview → structured
-> caption → seeded takes → browser gallery — is implemented and unit-tested,
-> with a `--dry-run` path that works without a GPU. **First real Ideogram 4
-> generation on a target machine is the outstanding acceptance test** (see
-> [plans/IMPLEMENTATION-STATUS.md](plans/IMPLEMENTATION-STATUS.md)).
+> Working experimental software (v0.0.1). The pipeline — interview → prompt →
+> seeded takes → browser gallery — is implemented and unit-tested, with a
+> `--dry-run` path that works without a GPU. **First real Qwen-Image-2.1
+> generation (full vs Unsloth Q8 side-by-side) is the outstanding acceptance
+> test** (see [plans/IMPLEMENTATION-STATUS.md](plans/IMPLEMENTATION-STATUS.md)).
 
-## Why Ideogram 4
+## Why Qwen-Image-2.1
 
-Ideogram 4 ([ideogram-oss/ideogram4](https://github.com/ideogram-oss/ideogram4))
-is a 9.3B flow-matching text-to-image model trained from scratch: best-in-class
-open text rendering (signage, logos, multi-line text), explicit bounding-box
-layout control, color-palette conditioning, and native 2K output — driven here
-through its structured JSON caption interface.
+Qwen-Image-2.1 ([QwenLM/Qwen-Image-2.1](https://github.com/QwenLM/Qwen-Image-2.1))
+is a 7B single-stream diffusion transformer with a Qwen3-VL-8B text encoder:
+strong text rendering (signage, logos), native transparent (RGBA) output,
+unified creation + editing (up to 10 reference images), and native 2K output —
+driven here through plain-text prompts via `diffusers.QwenImage21Pipeline`.
 
 > [!IMPORTANT]
-> **Ideogram 4 weights are Non-Commercial** (gated on Hugging Face under the
-> Ideogram 4 Non-Commercial license). Output from this studio is for
-> personal/non-commercial use only unless you obtain separate terms.
+> **Qwen-Image-2.1 weights are Non-Commercial** (ungated on Hugging Face under
+> the Qwen Research License — no token needed, but no commercial use). Output
+> from this studio is for personal/non-commercial use only unless you obtain
+> separate terms. The Unsloth Q8 GGUF quant shares the same license.
 
 ## Requirements
 
-- **NVIDIA CUDA GPU** (nf4 quantization, the default) — 12 GB-class or larger
-  recommended (heuristic; first real render is the acceptance test). MPS/CPU
-  can run fp8, untested here and slow.
+- **NVIDIA CUDA GPU** — 24 GB-class recommended for the full Qwen weights
+  (Q8 GGUF needs less; heuristic — first real render is the acceptance test).
+  CPU offload is the default path.
 - **Python 3.12+** — core scripts are stdlib-only; the model runtime lives in
-  its own venv (`scripts/setup_ideogram.py`)
-- **git + bash** — one-time upstream fetch (`scripts/fetch_upstream.sh`)
+  its own venv (`scripts/setup_qwen21.py`)
+- **git** — only needed for the legacy Ideogram upstream fetch
 - [`uv`](https://docs.astral.sh/uv/) — only for the test/lint gates (`ruff`, `pytest`)
-- **A Hugging Face account + token** — weights are gated: accept the license
-  gate, export `HF_TOKEN`
-- Optional: `IDEOGRAM_API_KEY` (free hosted magic-prompt expansion),
-  `HIVE_*` keys (safety screening)
+- **No Hugging Face token needed** — Qwen weights are ungated (Qwen Research
+  License, non-commercial). (Legacy Ideogram weights are gated: accept the
+  license gate, export `HF_TOKEN`.)
+- Optional: prompt-rewriter checkpoints (`Qwen/Qwen-Image-2.1-PE-T2I`)
 
 ## Quickstart
 
@@ -61,11 +63,10 @@ you:  I want to create an image
 Manual equivalent (no agent):
 
 ```bash
-bash scripts/fetch_upstream.sh        # pinned upstream checkout into oss/
 python scripts/hardware_audit.py      # verify GPU + disk
-python scripts/setup_ideogram.py      # venv + gated weights (needs HF_TOKEN)
-# write studio/sessions/<your-id>/caption.json (see compose-brief skill),
-python scripts/generate_take.py --session studio/sessions/<your-id> --seed 7
+python scripts/setup_qwen21.py        # venv + ungated weights (no token needed)
+# write studio/sessions/<your-id>/prompt.txt (see compose-brief skill),
+python scripts/generate_qwen21_take.py --session studio/sessions/<your-id> --seed 42
 python scripts/serve_artifacts.py --port 8788   # gallery + result links
 ```
 
@@ -88,34 +89,38 @@ Two agent workspaces, one pipeline:
   skills in [`.dsh/skills/`](.dsh/skills/) (a DeepSeek Harness-native discovery
   root) — including **model-guide**, the parameter and capability reference.
 
-Pipeline: **compose-brief** (interview → `brief.md` + `prompt.txt` +
-verified `caption.json`) → **generate-image** (`scripts/generate_take.py`
-drives upstream `run_inference.py`) → **judge-quality** (alignment review +
-artifact flags, ranked verdict).
+Pipeline: **compose-brief** (interview → `brief.md` + `prompt.txt`) →
+**generate-image** (`scripts/generate_qwen21_take.py` via diffusers) →
+**judge-quality** (alignment review + artifact flags, ranked verdict).
 
-[`configs/provider.toml`](configs/provider.toml) holds the single-model
-registry plus Ideogram 4 defaults: quantization (`nf4` on CUDA, else `fp8`),
-sampler preset (`V4_TURBO_12` drafts by default, `V4_QUALITY_48` for finals on request), and
-canvas size (default 1024×1024).
+[`configs/provider.toml`](configs/provider.toml) holds the model registry
+(default `qwen21`, legacy `ideogram4`) plus Qwen defaults: variant (`full`
+bf16 by default, `q8_0` Unsloth GGUF), 40 steps, guidance 1.0, and canvas
+size (drafts 1024×1024, native up to 2048-class).
 
 ## Project Status
 
-v0.0.1 scaffold; first-GPU-render acceptance test outstanding. Progress tracked
-in [plans/IMPLEMENTATION-STATUS.md](plans/IMPLEMENTATION-STATUS.md).
+v0.0.1 scaffold; Qwen-Image-2.1 full-vs-Q8 acceptance test outstanding.
+Progress tracked in [plans/IMPLEMENTATION-STATUS.md](plans/IMPLEMENTATION-STATUS.md).
 
 ## Credits & Attribution
 
-- **Ideogram 4** ([ideogram-oss/ideogram4](https://github.com/ideogram-oss/ideogram4),
-  weights at [ideogram-ai/ideogram-4](https://huggingface.co/collections/ideogram-ai/ideogram-4)) —
-  the image model. Referenced and fetched locally at runtime; nothing from it
-  is redistributed here. Inference code is open source; **weights are
-  Non-Commercial** (see [NOTICE](NOTICE)).
+- **Qwen-Image-2.1** ([QwenLM/Qwen-Image-2.1](https://github.com/QwenLM/Qwen-Image-2.1),
+  weights at [Qwen/Qwen-Image-2.1](https://huggingface.co/Qwen/Qwen-Image-2.1),
+  Q8 quant at [unsloth/Qwen-Image-2.1-GGUF](https://huggingface.co/unsloth/Qwen-Image-2.1-GGUF)) —
+  the default image model. Referenced and fetched locally at runtime; nothing
+  from it is redistributed here. **Weights are Non-Commercial** (Qwen Research
+  License — see [NOTICE](NOTICE)). "Qwen is licensed under the Qwen RESEARCH
+  LICENSE AGREEMENT, Copyright (c) 2026 Hangzhou Tongyi Laboratory
+  Technology Co., Ltd. All Rights Reserved."
+- **Ideogram 4** ([ideogram-oss/ideogram4](https://github.com/ideogram-oss/ideogram4)) —
+  legacy engine, kept working (see [NOTICE](NOTICE)).
 - Interaction protocol (interview flow, preview-and-confirm, background-job
   dispatch hygiene) adapted from the **agentic-music** studio scaffold.
 - This is an independent community project, **not affiliated with or endorsed
-  by** Ideogram.
+  by** Alibaba/Qwen or Ideogram.
 - Model weights are **not included here** and must be downloaded separately by
-  each user after accepting the license gate.
+  each user under their own licenses.
 
 ## License
 

@@ -29,3 +29,13 @@
 ## Roadmap
 
 - CI workflow (ruff + pytest), packaging polish, `assets/` sample gallery.
+- Qwen-Image-2.1 as default — IN PROGRESS 2026-09-24 (see
+  [2026-09-24-qwen-image-2.1](2026-09-24-qwen-image-2.1.md)):
+  - [x] `configs/provider.toml` — registry (`qwen21` default) + `[qwen21]`
+  - [x] `scripts/setup_qwen21.py` (`setup_qwen21/v1`), `generate_qwen21_take.py`
+        (`generate_qwen21/v1` + `generate_qwen21_meta/v1`), `render_qwen21.py`
+        (`render_qwen21_inner/v1`); `--dry-run` passes, pytest 14/14 green
+  - [x] Skills (model-guide/generate-image/env-setup/compose-brief) + studio +
+        README + NOTICE + CHANGELOG updated
+  - [ ] Runtime provisioned (venv + full + Q8_0) — running as background job
+  - [ ] Side-by-side full vs Q8_0 comparison (acceptance table + verdict)

@@ -24,11 +24,13 @@ origin: >
 | Artifact | Content |
 |---|---|
 | `brief.md` | Full interview result: subject, style/medium, mood, composition, colors, text-to-render, size/aspect, references, exclusions |
-| `prompt.txt` | Plain-language working prompt (1–4 sentences). Feedstock for `--use-magic-prompt`, and the human-readable record of intent |
-| `caption.json` | **The artifact the model reads**: structured JSON caption — `high_level_description` + `style_description` + `compositional_deconstruction` (required). Written by YOU per the schema below, then gated by `scripts/verify_caption.py` |
+| `prompt.txt` | **The artifact the default model (Qwen-Image-2.1) reads**: plain-language prompt (1–4 sentences, detailed). Also the human-readable record of intent and feedstock for Ideogram `--use-magic-prompt` |
+| `caption.json` | Only for legacy Ideogram 4 sessions: structured JSON caption. Skip for Qwen sessions |
 
-There is exactly ONE image model, so there is **no model question and no
-`model.json`**. Go straight to the interview.
+There is exactly ONE default image model (Qwen-Image-2.1), so there is **no
+model question and no `model.json`**. Go straight to the interview. Only
+write `caption.json` when the user explicitly asks for a legacy Ideogram 4
+render.
 
 ## Step 0 — Learnings check
 
@@ -60,7 +62,16 @@ Mode: **Basic** (clear one-liner → infer everything, confirm once) or
 **Advanced** (user wants control over caption JSON / layout / palette).
 Ambiguity is resolved by asking, never by assuming silently.
 
-## Step 2 — caption.json (the structured caption)
+## Step 2 — prompt.txt (the Qwen prompt; default path)
+
+Write a rich plain-language prompt (2–5 sentences): subject + action, medium/
+style, lighting, palette, composition, literal text-to-render in quotes.
+Qwen renders quoted strings verbatim — spell them out. For transparent
+stickers append the RGBA trigger sentence (see model-guide §0.2). This file
+is what `generate_qwen21_take.py` sends — no verification gate, but re-read
+it for typos before confirming.
+
+## Step 2b — caption.json (legacy Ideogram 4 ONLY; skip for Qwen)
 
 Write the JSON **yourself** — do not rely on magic prompt for the default
 path. (Magic prompt is the fallback for casual one-liners, enabled per take

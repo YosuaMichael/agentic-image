@@ -39,3 +39,26 @@ and references third-party material as described below.
 
    Third-party moderation APIs invoked only when the user configures keys.
    Subject to Hive's terms.
+
+5. Qwen-Image-2.1 model weights — NON-COMMERCIAL ONLY
+   https://huggingface.co/Qwen/Qwen-Image-2.1
+   https://github.com/QwenLM/Qwen-Image-2.1
+
+   Licensed under the Qwen RESEARCH LICENSE AGREEMENT (see LICENSE in the
+   upstream repository / model card). Downloaded by end users directly from
+   Hugging Face (ungated, no token needed). Weights are not included with,
+   or redistributed by, this product. "Qwen is licensed under the Qwen
+   RESEARCH LICENSE AGREEMENT, Copyright (c) 2026 Hangzhou Tongyi
+   Laboratory Technology Co., Ltd. All Rights Reserved."
+
+   IMPORTANT: this is a non-commercial license. Qwen-Image-2.1 weights — and
+   therefore images generated with them through this product — may only be
+   used for NonCommercial purposes. Commercial use requires a separate
+   license from the Qwen team (model-business@notice.qwencloud.com).
+
+6. Unsloth Qwen-Image-2.1 GGUF quants (optional Q8_0 denoiser)
+   https://huggingface.co/unsloth/Qwen-Image-2.1-GGUF
+
+   Denoiser-only GGUF quantization of Qwen-Image-2.1 under the same Qwen
+   Research license (non-commercial). Downloaded by end users directly from
+   Hugging Face. Not included with, or redistributed by, this product.

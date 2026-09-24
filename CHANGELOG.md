@@ -5,6 +5,16 @@ JSON-contract changes (`<name>/vN` bumps) must be noted.
 
 ## [Unreleased]
 
+- Qwen-Image-2.1 is now the DEFAULT engine (`[models].default = "qwen21"`,
+  `available = ["qwen21", "ideogram4"]`; see
+  `plans/2026-09-24-qwen-image-2.1.md`). New contracts: `setup_qwen21/v1`
+  (`scripts/setup_qwen21.py`), `generate_qwen21/v1` +
+  `generate_qwen21_meta/v1` (`scripts/generate_qwen21_take.py`),
+  `render_qwen21_inner/v1` (`scripts/render_qwen21.py`, venv-resident).
+  Qwen sessions read plain-text `prompt.txt` (no caption.json discipline);
+  variants `full` (Qwen/Qwen-Image-2.1 bf16) + `q8_0` (Unsloth Q8_0 GGUF).
+  Weights ungated (no token) under the Qwen Research License
+  (non-commercial — see NOTICE). Ideogram 4 path untouched (legacy).
 - Hermetic weights: `[ideogram4].hf_cache = "models/hf-hub"` (gitignored);
   generation runs with `HF_HUB_OFFLINE=1` — no token, no network, no
   re-download in any session. Setup writes an offline shim

@@ -15,10 +15,14 @@ EXPECTED_SCHEMAS = {
     "setup_ideogram.py": "setup_ideogram/v1",
     "serve_artifacts.py": "artifacts-index/v1",
     "render_batch.py": "render_batch_inner/v1",
+    "setup_qwen21.py": "setup_qwen21/v1",
+    "generate_qwen21_take.py": "generate_qwen21/v1",
+    "render_qwen21.py": "render_qwen21_inner/v1",
 }
 
 ADDITIONAL_SCHEMAS = {
     "generate_take.py": ["generate_meta/v1", "generate_batch/v1"],
+    "generate_qwen21_take.py": ["generate_qwen21_meta/v1"],
 }
 
 
@@ -32,7 +36,9 @@ def run(script: str, *args: str) -> subprocess.CompletedProcess[str]:
 def test_scripts_import_cleanly() -> None:
     for script in ("hardware_audit.py", "verify_caption.py",
                    "generate_take.py", "setup_ideogram.py",
-                   "serve_artifacts.py", "render_batch.py"):
+                   "serve_artifacts.py", "render_batch.py",
+                   "setup_qwen21.py", "generate_qwen21_take.py",
+                   "render_qwen21.py"):
         src = (SCRIPTS / script).read_text(encoding="utf-8")
         compile(src, script, "exec")
 
@@ -63,6 +69,47 @@ def test_generate_missing_session_exits_2_with_json() -> None:
     assert proc.returncode == 2
     doc = json.loads(proc.stdout)
     assert doc["schema"] == "generate/v1" and doc["ok"] is False
+
+
+def test_qwen21_missing_session_exits_2_with_json() -> None:
+    proc = run("generate_qwen21_take.py", "--session",
+               "studio/sessions/does-not-exist", "--seed", "42")
+    assert proc.returncode == 2
+    doc = json.loads(proc.stdout)
+    assert doc["schema"] == "generate_qwen21/v1" and doc["ok"] is False
+
+
+def test_qwen21_dry_run_end_to_end(tmp_path: Path) -> None:
+    session = tmp_path / "20260924-000000-qwen-smoke"
+    takes = session / "takes"
+    takes.mkdir(parents=True)
+    (session / "brief.md").write_text("# smoke\nA neon sign.", encoding="utf-8")
+    (session / "prompt.txt").write_text(
+        'A neon shop sign that reads "QWEN IMAGE 2.1".', encoding="utf-8")
+    config = REPO_ROOT / "configs" / "provider.toml"
+    proc = run("generate_qwen21_take.py", "--session", str(session),
+               "--seed", "42", "--config", str(config), "--dry-run")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    doc = json.loads(proc.stdout)
+    assert doc["schema"] == "generate_qwen21/v1" and doc["ok"] is True
+    assert doc["dry_run"] is True and doc["take"] == "take-01"
+    assert doc["quantization"] == "full" and doc["steps"] == 40
+    png = takes / "take-01.png"
+    assert png.is_file() and png.stat().st_size > 0
+    assert (takes / "take-01.metadata.json").is_file()
+    assert (takes / "take-01.prompt.txt").is_file()
+    meta = json.loads((takes / "take-01.metadata.json").read_text())
+    assert meta["schema"] == "generate_qwen21_meta/v1"
+
+
+def test_qwen21_missing_prompt_exits_2(tmp_path: Path) -> None:
+    session = tmp_path / "20260924-000000-qwen-noprompt"
+    (session / "takes").mkdir(parents=True)
+    proc = run("generate_qwen21_take.py", "--session", str(session),
+               "--dry-run")
+    assert proc.returncode == 2
+    doc = json.loads(proc.stdout)
+    assert doc["schema"] == "generate_qwen21/v1" and doc["ok"] is False
 
 
 def test_verify_rejects_bad_caption(tmp_path: Path) -> None:

@@ -11,3 +11,4 @@ to change one, write a new dated plan and register it here.
 | 2026-09-14 | [perf-tuning](2026-09-14-perf-tuning.md) | active | Diagnosis of 456 s render; batch mode; nf4-only verdict with numbers |
 | 2026-09-14 | [hermetic-weights](2026-09-14-hermetic-weights.md) | active | Repo-local weight cache; offline generation with no login/network |
 | 2026-09-14 | [IMPLEMENTATION-STATUS](IMPLEMENTATION-STATUS.md) | living | Build progress + acceptance tests |
+| 2026-09-24 | [qwen-image-2.1](2026-09-24-qwen-image-2.1.md) | active | Qwen-Image-2.1 default engine (full + Unsloth Q8), amends D1/D4 |

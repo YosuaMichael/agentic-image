@@ -2,20 +2,29 @@
 # Parsed by the scripts/ CLIs. Keep TOML simple.
 #
 # Unlike agentic-music (two music models, one asked-once choice per session),
-# this studio drives a SINGLE image model — Ideogram 4 — so there is no
-# per-session model question. The axes an agent varies per image are the
-# QUANTIZATION (VRAM/quality tradeoff) and the SAMPLER PRESET (speed/quality
-# tradeoff), both recorded per take in its metadata.json.
+# this studio defaults to Qwen-Image-2.1 for new sessions (plain-text prompts
+# via diffusers); Ideogram 4 stays as a legacy engine (structured caption.json).
+# The axes an agent varies per image are recorded per take in metadata.json.
 
 # ---------------------------------------------------------------------------
-# Image-model registry. Single entry today; kept as a table so a second model
-# is an additive change (mirrors agentic-music's [models] shape).
+# Image-model registry.
 
 [models]
-# The model every session uses. There is no model.json and no ask-once gate:
-# compose-brief goes straight to the interview.
-default = "ideogram4"
-available = ["ideogram4"]
+# The model new sessions use. "qwen21" = Qwen-Image-2.1 (default);
+# "ideogram4" = legacy Ideogram 4 caption.json path.
+default = "qwen21"
+available = ["qwen21", "ideogram4"]
+
+[models.qwen21]
+label = "Qwen-Image-2.1 (7B single-stream DiT, plain-text prompts, RGBA + editing)"
+engine = "qwen21"
+# Weights are UNGATED on Hugging Face but under the Qwen Research License
+# (non-commercial). Surfaced in README/NOTICE — never claim commercial rights
+# over Qwen-Image-2.1 output without separate terms.
+weights_license = "Qwen Research (non-commercial)"
+commercial_use = false
+# The prompt artifact this model consumes: plain text (see README quick-start).
+prompt_artifact = "prompt.txt"
 
 [models.ideogram4]
 label = "Ideogram 4 (9.3B flow-matching DiT, structured JSON captions)"
@@ -89,6 +98,44 @@ hf_cache = "models/hf-hub"
 # Default venv lives OUTSIDE the repo (weights + torch are multi-GB).
 venv_dir = "~/.venvs/agentic-image-ideogram4"
 python = "python3.12"
+
+# ---------------------------------------------------------------------------
+# Qwen-Image-2.1 runtime + generation defaults.
+# See https://github.com/QwenLM/Qwen-Image-2.1 (README: diffusers
+# QwenImage21Pipeline, Day-0 PR huggingface/diffusers#14804).
+# Plain-text prompts (prompt.txt); no caption.json discipline.
+
+[qwen21]
+# Weight variant. "full" = Qwen/Qwen-Image-2.1 safetensors bf16 (DEFAULT —
+# best quality). "q8_0" = Unsloth Q8_0 GGUF transformer (denoiser-only) with
+# text encoder + VAE from the full repo (smaller VRAM, fast download).
+quantization = "full"
+full_repo = "Qwen/Qwen-Image-2.1"
+gguf_repo = "unsloth/Qwen-Image-2.1-GGUF"
+gguf_file_q8 = "qwen-image-2.1-Q8_0.gguf"
+
+# Diffusion defaults (upstream README). Steps = quality/speed knob (analog of
+# Ideogram sampler presets, but a plain int here).
+num_inference_steps = 40
+guidance_scale = 1.0
+
+# Canvas defaults. Drafts at 1024² (fast iteration); native quality is 2048²
+# (see README aspect table). Any W×H the pipeline accepts; 1024-class to start.
+width = 1024
+height = 1024
+
+# --- Weight cache (shared, gitignored) -------------------------------------
+# Full safetensors live under the HF cache (same layout as ideogram4);
+# the GGUF denoiser lives at models/gguf/<file> (direct download, ungated).
+hf_cache = "models/hf-hub"
+gguf_dir = "models/gguf"
+
+# --- Runtime placement -----------------------------------------------------
+# Separate venv from Ideogram (diffusers-from-git must not disturb torch pin).
+venv_dir = "~/.venvs/agentic-image-qwen21"
+python = "python3.12"
+# diffusers must be git-main for the Day-0 QwenImage21Pipeline class.
+diffusers_git = "git+https://github.com/huggingface/diffusers"
 
 [generation]
 # Number of seeded takes per generation round (default 1: images are cheap to

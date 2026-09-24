@@ -1,12 +1,22 @@
 ---
 name: generate-image
 description: >
-  Render seeded image takes for a prepared session folder with Ideogram 4 via
-  scripts/generate_take.py — never by hand-calling run_inference.py. Use after
-  compose-brief has produced caption.json.
+  Render seeded image takes for a prepared session folder — Qwen-Image-2.1
+  (default) via scripts/generate_qwen21_take.py, or legacy Ideogram 4 via
+  scripts/generate_take.py. Use after compose-brief has produced prompt.txt
+  (qwen21) or caption.json (ideogram4).
 ---
 
 # Skill: generate-image
+
+## Engine dispatch (read first)
+
+- **Default sessions use Qwen-Image-2.1**: prompt artifact is `prompt.txt`
+  (plain text). Dispatch with `scripts/generate_qwen21_take.py`.
+- **Legacy Ideogram 4 sessions** (folder has `caption.json` as the working
+  prompt): dispatch with `scripts/generate_take.py` — never hand-call
+  `run_inference.py`. The rest of this file's Ideogram-specific flags
+  (sampler presets, nf4/fp8, magic prompt, Hive) apply ONLY to that path.
 
 ## Preconditions (verify, don't assume)
 
@@ -21,7 +31,34 @@ description: >
    checkout/venv/weights comes back as a precise `generate/v1` error, not a
    hang. (`python scripts/setup_ideogram.py` installs; never hand-install.)
 
-## Procedure
+## Procedure — Qwen-Image-2.1 (default)
+
+1. **Learnings check.** Skim `studio/learnings/LEARNINGS.md` first; its rules
+   override habit.
+2. **Dispatch 1 take by default** (next seed from `[generation].seeds`).
+   Run as a **background job** — one command per take:
+
+   ```bash
+   python scripts/generate_qwen21_take.py --session studio/sessions/<image-id> --seed <seed>
+   ```
+
+   Overrides (first-class flags; see also the model-guide skill):
+   `--quantization full|q8_0`, `--steps N` (default 40),
+   `--guidance-scale F` (default 1.0), `--width/--height` (drafts 1024²,
+   native up to 2048-class), `--take-id N`, `--dry-run` (no-GPU placeholder).
+3. **Dispatch takes SEQUENTIALLY** on a single GPU.
+4. Parse each result's `generate_qwen21/v1` JSON (take PNG + sidecar
+   `metadata.json`, `seed`, `steps`, `quantization`, `elapsed_s`, `load_s`,
+   `bytes`). The generator freezes per-take copies (`take-NN.prompt.txt`,
+   `take-NN.brief.md`) — never edit or delete those copies.
+5. Gate: every requested take exists as a non-empty PNG (`actual_width/height`
+   in metadata). Report quick facts + **result link**
+   (`http://<host>:8788/view/<session>/takes/<take>.png`), then offer:
+   *1 more take* / *3 more takes* / *run auto-review* / *done*.
+   Cost rule: **iterate at 1024², finish big** (native 2048-class costs
+   ~4× pixels).
+
+## Procedure — Ideogram 4 (legacy)
 
 1. **Learnings check.** Skim `studio/learnings/LEARNINGS.md` (small,
    append-only, gitignored — if missing, treat as empty) before dispatching;

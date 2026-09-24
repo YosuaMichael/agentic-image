@@ -1,15 +1,16 @@
 ---
 name: env-setup
 description: >
-  One-time machine bring-up for agentic-image: hardware audit, upstream
-  checkout, Ideogram 4 venv + weights, smoke test. Use on a fresh machine or
-  when the pipeline reports a missing tool/checkout/runtime/weights.
+  One-time machine bring-up for agentic-image: hardware audit, Qwen-Image-2.1
+  venv + weights (default) or legacy Ideogram 4 checkout/venv/weights, smoke
+  test. Use on a fresh machine or when the pipeline reports a missing
+  runtime/weights.
 ---
 
 # Skill: env-setup
 
-Bring a machine from zero to generating images locally. Execute steps **in
-order**; every step gates the next. Never skip a failed gate.
+Bring a machine from zero to generating images locally. **Default engine is
+Qwen-Image-2.1** (Steps Q1–Q4 below); the legacy Ideogram 4 path follows after.
 
 ## Step 1 — Hardware audit
 
@@ -18,11 +19,42 @@ python scripts/hardware_audit.py
 ```
 
 Parse `hardware_audit/v1`. Gate: `verdict.single_gpu_vram_ok == true`
-(proceed), `null` (proceed with fp8 + a warning), `false` (STOP and report —
-GPU below the soft floor; CPU render is untested here). Note `disks[]` free
-space: ≥30 GB free before weights (9.3B model + 8B text encoder + torch).
+(proceed), `null` (proceed with a warning), `false` (STOP and report).
+Note `disks[]` free space: ≥60 GB free before Qwen weights (47 GB full +
+~7.5 GB Q8 + torch).
 
-## Step 2 — Pin and verify upstream references
+## Step Q2 — Qwen runtime + weights setup (DEFAULT, ungated)
+
+No browser gate, no token — Qwen weights are ungated (Qwen Research License,
+non-commercial). Run as a background job (multi-GB torch + ~55 GB weights):
+
+```bash
+python scripts/setup_qwen21.py
+```
+
+Parse `setup_qwen21/v1`. Gate: `"ok": true` AND `"ready_for_generation":
+true`. `--quantization full|q8_0` pre-fetches one variant;
+`--skip-weights` installs the runtime only.
+
+## Step Q3 — Qwen smoke test (no GPU taste, then the real thing)
+
+```bash
+python scripts/generate_qwen21_take.py --session studio/sessions/<any-session> --dry-run
+```
+
+Gate: `generate_qwen21/v1` with `"ok": true`, `"dry_run": true`. Then the
+real acceptance test:
+
+```bash
+python scripts/generate_qwen21_take.py --session studio/sessions/<any-session> --seed 42
+```
+
+Gate: `"ok": true`, non-empty PNG at requested dims. **Record peak VRAM +
+wall time (load vs diffusion) in a dated plan document.**
+
+## Legacy Ideogram 4 path (only when an ideogram4 session needs it)
+
+### Step 2 — Pin and verify upstream references
 
 Fetches the gitignored upstream checkout into `oss/` (~source only, no
 weights, no GPU):

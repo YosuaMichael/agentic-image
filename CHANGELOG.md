@@ -15,6 +15,10 @@ JSON-contract changes (`<name>/vN` bumps) must be noted.
   variants `full` (Qwen/Qwen-Image-2.1 bf16) + `q8_0` (Unsloth Q8_0 GGUF).
   Weights ungated (no token) under the Qwen Research License
   (non-commercial — see NOTICE). Ideogram 4 path untouched (legacy).
+  Notes: the CFG knob is `true_cfg_scale` (diffusers Day-0 name); qwen venv
+  installs torch/torchvision from the cu128 index (plain pip = CPU build);
+  the Q8 GGUF runs via stable-diffusion.cpp `sd-cli`, not the diffusers
+  single-file loader (shape mismatch) — dispatcher wiring is open work.
 - Hermetic weights: `[ideogram4].hf_cache = "models/hf-hub"` (gitignored);
   generation runs with `HF_HUB_OFFLINE=1` — no token, no network, no
   re-download in any session. Setup writes an offline shim

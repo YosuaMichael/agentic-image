@@ -94,6 +94,7 @@ def test_qwen21_dry_run_end_to_end(tmp_path: Path) -> None:
     assert doc["schema"] == "generate_qwen21/v1" and doc["ok"] is True
     assert doc["dry_run"] is True and doc["take"] == "take-01"
     assert doc["quantization"] == "full" and doc["steps"] == 40
+    assert doc["true_cfg_scale"] == 1.0
     png = takes / "take-01.png"
     assert png.is_file() and png.stat().st_size > 0
     assert (takes / "take-01.metadata.json").is_file()

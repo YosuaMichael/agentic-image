@@ -4,7 +4,7 @@
 Usage (internal — called by scripts/generate_qwen21_take.py, never by agents):
     <venv-python> scripts/render_qwen21.py --prompt <text>
         --out-dir <session>/takes --takes take-01 --seeds 42
-        --width 1024 --height 1024 --steps 40 --guidance-scale 1.0
+        --width 1024 --height 1024 --steps 40 --true-cfg-scale 1.0
         --quantization full|q8_0
 
 Loads the pipeline ONCE (full safetensors or Unsloth Q8_0 GGUF transformer +
@@ -55,7 +55,7 @@ def main() -> int:
     parser.add_argument("--width", required=True, type=int)
     parser.add_argument("--height", required=True, type=int)
     parser.add_argument("--steps", required=True, type=int)
-    parser.add_argument("--guidance-scale", required=True, type=float)
+    parser.add_argument("--true-cfg-scale", required=True, type=float)
     parser.add_argument("--quantization", required=True,
                         choices=["full", "q8_0"])
     parser.add_argument("--repo-dir", default=None,
@@ -167,7 +167,7 @@ def main() -> int:
                 width=args.width,
                 height=args.height,
                 num_inference_steps=args.steps,
-                guidance_scale=args.guidance_scale,
+                true_cfg_scale=args.true_cfg_scale,
                 generator=gen,
             ).images[0]
             if torch.cuda.is_available():

@@ -176,8 +176,20 @@ def main() -> int:
     needs_install = args.force or rc != 0
     installed: dict[str, object] = {}
     if needs_install:
-        # torch first (CUDA build on Windows), then the rest incl. diffusers.
-        pkgs = ["torch", "transformers>=5.17", "accelerate", "pillow",
+        # torch FIRST from the CUDA index (plain `pip install torch` pulls a
+        # CPU build on Windows — same pitfall as the Ideogram setup), then the
+        # rest (diffusers from git for the Day-0 QwenImage21Pipeline class).
+        rc, _, err = venv_run(
+            ["-m", "pip", "install", "torch",
+             "--index-url", "https://download.pytorch.org/whl/cu128"],
+            timeout=7200)
+        if rc != 0:
+            emit({"schema": "setup_qwen21/v1", "ok": False,
+                  "actions": actions, "skipped": skipped,
+                  "error": f"pip install torch (cu128) failed: {err[-2000:]}"})
+            return 8
+        actions.append("pip installed torch (cu128)")
+        pkgs = ["torchvision", "transformers>=5.17", "accelerate", "pillow",
                 "sentencepiece", "huggingface_hub", "gguf", diffusers_git]
         rc, _, err = venv_run(["-m", "pip", "install", *pkgs], timeout=7200)
         if rc != 0:

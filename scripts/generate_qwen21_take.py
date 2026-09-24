@@ -4,7 +4,7 @@
 Usage:
     python scripts/generate_qwen21_take.py --session studio/sessions/<image-id>
         [--seed 42] [--quantization full|q8_0] [--steps 40]
-        [--width 1024 --height 1024] [--guidance-scale 1.0] [--dry-run]
+        [--width 1024 --height 1024] [--true-cfg-scale 1.0] [--dry-run]
 
 Qwen-Image-2.1 reads PLAIN TEXT (prompt.txt) — there is no caption.json
 discipline for this engine (that belongs to the legacy ideogram4 path).
@@ -26,7 +26,7 @@ JSON contract (stdout) — generate_qwen21/v1:
      "take": "take-01", "png": "takes/take-01.png",
      "metadata": "takes/take-01.metadata.json", "bytes": 12345,
      "width": 1024, "height": 1024, "elapsed_s": 61.2, "seed": 42,
-     "steps": 40, "guidance_scale": 1.0, "quantization": "full",
+     "steps": 40, "true_cfg_scale": 1.0, "quantization": "full",
      "dry_run": false, "warnings": [...], "error": null}
 
 Sidecar schema — generate_qwen21_meta/v1 (takes/take-NN.metadata.json):
@@ -128,7 +128,7 @@ def main() -> int:
     parser.add_argument("--width", type=int, default=None)
     parser.add_argument("--height", type=int, default=None)
     parser.add_argument("--steps", type=int, default=None)
-    parser.add_argument("--guidance-scale", type=float, default=None)
+    parser.add_argument("--true-cfg-scale", type=float, default=None)
     parser.add_argument("--quantization", default=None, choices=QUANTIZATIONS)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -170,9 +170,9 @@ def main() -> int:
     steps = args.steps or int(qw.get("num_inference_steps", 40))
     if not (1 <= steps <= 200):
         return fail(f"--steps must be 1-200 (got {steps})")
-    guidance = (args.guidance_scale
-                if args.guidance_scale is not None
-                else float(qw.get("guidance_scale", 1.0)))
+    guidance = (args.true_cfg_scale
+                if args.true_cfg_scale is not None
+                else float(qw.get("true_cfg_scale", 1.0)))
     quantization = args.quantization or str(qw.get("quantization", "full"))
     if quantization not in QUANTIZATIONS:
         return fail(f"unknown quantization {quantization!r}")
@@ -228,7 +228,7 @@ def main() -> int:
                "--out-dir", str(takes_dir),
                "--takes", take, "--seeds", str(seed),
                "--width", str(width), "--height", str(height),
-               "--steps", str(steps), "--guidance-scale", str(guidance),
+               "--steps", str(steps), "--true-cfg-scale", str(guidance),
                "--quantization", quantization,
                "--repo-dir", repo_dir_arg or ""]
         if quantization == "q8_0":
@@ -276,7 +276,7 @@ def main() -> int:
         "actual_width": dims[0] if dims else None,
         "actual_height": dims[1] if dims else None,
         "steps": steps,
-        "guidance_scale": guidance,
+        "true_cfg_scale": guidance,
         "quantization": quantization,
         "python": backend_python,
         "prompt_sha256": prompt_sha,
@@ -294,7 +294,7 @@ def main() -> int:
           "metadata": f"takes/{take}.metadata.json",
           "bytes": out_png.stat().st_size, "width": width, "height": height,
           "elapsed_s": elapsed, "load_s": load_s, "seed": seed,
-          "steps": steps, "guidance_scale": guidance,
+          "steps": steps, "true_cfg_scale": guidance,
           "quantization": quantization, "dry_run": args.dry_run,
           **({"warnings": warnings} if warnings else {}), "error": None})
     return 0

@@ -117,7 +117,7 @@ gguf_file_q8 = "qwen-image-2.1-Q8_0.gguf"
 # Diffusion defaults (upstream README). Steps = quality/speed knob (analog of
 # Ideogram sampler presets, but a plain int here).
 num_inference_steps = 40
-guidance_scale = 1.0
+true_cfg_scale = 1.0
 
 # Canvas defaults. Drafts at 1024² (fast iteration); native quality is 2048²
 # (see README aspect table). Any W×H the pipeline accepts; 1024-class to start.

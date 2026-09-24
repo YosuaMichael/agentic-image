@@ -44,7 +44,7 @@ description: >
 
    Overrides (first-class flags; see also the model-guide skill):
    `--quantization full|q8_0`, `--steps N` (default 40),
-   `--guidance-scale F` (default 1.0), `--width/--height` (drafts 1024²,
+   `--true-cfg-scale F` (default 1.0), `--width/--height` (drafts 1024²,
    native up to 2048-class), `--take-id N`, `--dry-run` (no-GPU placeholder).
 3. **Dispatch takes SEQUENTIALLY** on a single GPU.
 4. Parse each result's `generate_qwen21/v1` JSON (take PNG + sidecar

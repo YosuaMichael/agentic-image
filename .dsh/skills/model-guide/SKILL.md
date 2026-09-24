@@ -20,8 +20,19 @@ weights [`Qwen/Qwen-Image-2.1`](https://huggingface.co/Qwen/Qwen-Image-2.1)
 Backend: `diffusers.QwenImage21Pipeline` (Day-0,
 [huggingface/diffusers#14804](https://github.com/huggingface/diffusers/pull/14804)),
 venv `~/.venvs/agentic-image-qwen21`. Plain-text `prompt.txt` in, PNG out.
-Measured numbers on this machine: see `plans/2026-09-24-qwen-image-2.1.md`
-comparison table (filled after the side-by-side runs).
+
+### Measured (RTX 4090, 1024²/40 steps, seed 42, 2026-09-24)
+
+| Variant | Load | Diffusion | End to end | VRAM | Typography |
+|---|---|---|---|---|---|
+| `full` (diffusers bf16) | 10.1 s | 38.4 s | ~48 s | CPU-offloaded | perfect |
+| `q8_0` (sd-cli: Q8 denoiser + Q4_XL encoder + bf16 VAE) | ~2 s | 43.4 s | 44 s | 12.3 GB resident | perfect |
+
+Full story + verdict: `plans/2026-09-24-qwen-image-2.1.md`. Note: the Q8
+GGUF does NOT load via diffusers (`img_in` shape mismatch) — it runs through
+`stable-diffusion.cpp` `sd-cli` (prebuilt under `.tools/sd.cpp/`), so
+`--quantization q8_0` in `generate_qwen21_take.py` is not yet wired end to
+end (open follow-up).
 
 ### 0.1 Quantization (quality/VRAM tradeoff)
 
@@ -39,7 +50,7 @@ Takes record theirs in metadata.
   Ideogram's TURBO/QUALITY presets, but a plain int (`--steps N`, 1–200).
   Rule until measured otherwise: **iterate at 1024² / 40 steps, finish at
   2048-class**.
-- `guidance_scale` (default 1.0, `--guidance-scale`).
+- `true_cfg_scale` (default 1.0, `--true-cfg-scale`).
 - Canvas: drafts 1024×1024; native 2K aspect table (upstream README):
   1:1 2048² · 4:3 2400×1792 · 3:4 1792×2400 · 3:2 2528×1696 · 2:3 1696×2528 ·
   16:9 2752×1536 · 9:16 1536×2752. Drafts stay 1024-class for speed.

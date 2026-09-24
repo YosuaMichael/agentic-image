@@ -37,5 +37,8 @@
         (`render_qwen21_inner/v1`); `--dry-run` passes, pytest 14/14 green
   - [x] Skills (model-guide/generate-image/env-setup/compose-brief) + studio +
         README + NOTICE + CHANGELOG updated
-  - [ ] Runtime provisioned (venv + full + Q8_0) — running as background job
-  - [ ] Side-by-side full vs Q8_0 comparison (acceptance table + verdict)
+  - [ ] Runtime provisioned (venv + full + Q8_0) — DONE 2026-09-24
+        (venv `~/.venvs/agentic-image-qwen21`, torch 2.11 cu128;
+        full 47 GB + Q8_0 7.6 GB + companions VAE/Q4_XL)
+  - [x] Side-by-side full vs Q8_0 (acceptance table + verdict in the plan doc;
+        gallery `/view/20260924-000000-qwen21-compare/takes/take-0{1,2}.png`)
